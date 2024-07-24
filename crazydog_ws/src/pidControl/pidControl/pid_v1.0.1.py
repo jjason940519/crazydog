@@ -2,7 +2,7 @@ import rclpy
 from rclpy.node import Node
 
 from std_msgs.msg import Float32MultiArray
-from pid import PID
+from crazydog_ws.src.pidControl.pidControl.pid_example import PID
 import threading
 
 
