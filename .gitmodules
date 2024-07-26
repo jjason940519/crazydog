@@ -1,0 +1,3 @@
+[submodule "crazydog_ws/src/pidControl/pidControl/modules/unitree_actuator_sdk"]
+	path = crazydog_ws/src/pidControl/pidControl/modules/unitree_actuator_sdk
+	url = https://github.com/unitreerobotics/unitree_actuator_sdk.git
