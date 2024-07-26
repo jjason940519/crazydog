@@ -2,9 +2,14 @@ import rclpy
 from rclpy.node import Node
 
 from std_msgs.msg import Float32MultiArray
-from crazydog_ws.src.pidControl.pidControl.pid_example import PID
+from pid_example import PID
 import threading
 
+import time
+import sys
+sys.path.append('/home/anson/Desktop/crazydog/crazydog_ws/src/pidControl/pidControl/modules/unitree_actuator_sdk/lib')
+from crazydog_ws.src.pidControl.pidControl.modules.unitree_actuator_sdk import *
+import traceback
 
 class focMotor():
     def __init__(self):
@@ -45,21 +50,81 @@ class RosTopicManager(Node):
 
 class robotController():
     def __init__(self) -> None:
+        rclpy.init()
         ros_manager = RosTopicManager()
-        subscriber_thread = threading.Thread(target=rclpy.spin, args=(ros_manager,), daemon=True)
-        subscriber_thread.start()
-        # lock_legs()
+        self.ros_manager_thread = threading.Thread(target=rclpy.spin, args=(ros_manager,), daemon=True)
+        self.ros_manager_thread.start()
+        self.running_flag = False
 
+        self.motor_cmd_list = []
+        self.motor_data_list = []
+
+        self.angular_pid = PID(10, 0, 1)
+        # self.balance_pid.output_limits = (-10, 10)
+        self.velocity_pid = PID(0.008, 0.0, 0.00001)
+        # self.velocity_pid.output_limits = (0, 0)
+        self.angularvelocity_pid = PID(65, 0, 0)
+
+        self.yaw_pid = PID(350, 0, 0.4)
+
+        self.init_unitree_motor()
+        self.locklegs()
+        self.startController()
+
+    def init_unitree_motor(self, motor_num=6):
+        for id in range(motor_num):
+            cmd = MotorCmd()
+            cmd.id = id
+            data = MotorData()
+            data.motorType = MotorType.GO_M8010_6
+            cmd.motorType = MotorType.GO_M8010_6
+            cmd.mode = queryMotorMode(MotorType.GO_M8010_6,MotorMode.FOC)
+            self.motor_cmd_list.append(cmd)
+            self.motor_data_list.append(data)         
+    
+    def locklegs(self, motor_pos=[0., 0., 0., 0., 0., 0.]):
+        serial = SerialPort('/dev/ttyUSB0')
+        for cmd, data, q in zip(self.motor_cmd_list, self.motor_data_list, motor_pos):
+            cmd.q = q
+            serial.sendRecv(cmd, data)
+
+    def controller(self):
+        while self.running_flag:
+            pass
+
+    def startController(self):
+        self.prev_pitch = 0
+        self.pid_thread = threading.Thread(target=self.controller)
+        self.running_flag = True
+        self.pid_thread.start()
+
+    def disableController(self):
+        self.running_flag = False
+        if self.pid_thread is not None:
+            self.pid_thread.join()
+        print("disable controller")
 
 def main(args=None):
-    rclpy.init(args=args)
+    robot = robotController()
+    command_dict = {
+        "d": robot.disableController,
+        "start": robot.startController,
+        # "get": robot_motor.getControllerPIDParam,
+        # "clear": robot_motor.mc.cleanerror,
+    }
 
-    robot_control = RosTopicManager()
+    while True:
+        try:
+            cmd = input("CMD :")
+            if cmd in command_dict:
+                command_dict[cmd]()
+            elif cmd == "exit":
+                robot.disableController()
+                break
 
-    rclpy.spin(robot_control)
-
-    robot_control.destroy_node()
-    rclpy.shutdown()
+        except Exception as e:
+            traceback.print_exc()
+            break
 
 
 if __name__ == '__main__':
