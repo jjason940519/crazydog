@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 import os
 from glob import glob
 
-package_name = 'focInterface'
+package_name = 'robot_interfaces'
 
 setup(
     name=package_name,
@@ -24,8 +24,9 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'foc_command_sub = focInterface.foc_command_sub:main',
-            'foc_data_pub = focInterface.foc_data_pub:main',
+            'foc_command_sub = robot_interfaces.foc_command_sub:main',
+            'foc_data_pub = robot_interfaces.foc_data_pub:main',
+            'imu_data_pub = robot_interfaces.imu_data_pub:main',
         ],
     },
 )

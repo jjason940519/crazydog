@@ -7,7 +7,7 @@ import threading
 
 import time
 import sys
-sys.path.append('/home/anson/Desktop/crazydog/crazydog_ws/src/pidControl/pidControl/modules/unitree_actuator_sdk/lib')
+sys.path.append('/home/crazydog/crazydog/crazydog_ws/src/pidControl/pidControl/modules/unitree_actuator_sdk/lib')
 from crazydog_ws.src.pidControl.pidControl.modules.unitree_actuator_sdk import *
 import traceback
 
