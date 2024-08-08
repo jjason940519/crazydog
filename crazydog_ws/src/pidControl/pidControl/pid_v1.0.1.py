@@ -10,6 +10,7 @@ import sys
 sys.path.append('/home/crazydog/crazydog/crazydog_ws/src/pidControl/pidControl/modules/unitree_actuator_sdk/lib')
 from crazydog_ws.src.pidControl.pidControl.modules.unitree_actuator_sdk import *
 import traceback
+import math
 
 class focMotor():
     def __init__(self):
@@ -22,7 +23,7 @@ class RosTopicManager(Node):
     def __init__(self):
         super().__init__('ros_topic_manager')
         self.foc_data_subscriber = self.create_subscription(Float32MultiArray,'foc_msg', self.foc_callback, 1)
-        # self.imu_subscriber = self.create_subscription(Float32MultiArray,'imu', self.imu_callback, 1)
+        self.imu_subscriber = self.create_subscription(Float32MultiArray,'imu', self.imu_callback, 1)
         self.foc_command_publisher = self.create_publisher(Float32MultiArray, 'foc_command', 1)
         self.foc_right = focMotor()
         self.foc_left = focMotor()
@@ -38,6 +39,22 @@ class RosTopicManager(Node):
             self.foc_left.speed = msg[2]
             self.foc_left.current = msg[3]
             self.foc_left.temperature = msg[4]
+
+    def imu_callback(self, msg):
+        qua_x = msg.orientation.x
+        qua_y = msg.orientation.y
+        qua_z = msg.orientation.z
+        qua_w = msg.orientation.w
+        self.angularvelocity_y = msg.angular_velocity.y
+        self.pitch_init = (
+            math.asin(2 * (qua_w * qua_y - qua_z * qua_x)))
+        
+        t3 = 2 * (qua_w * qua_z + qua_x * qua_y)
+        t4 = 1 - 2 * (qua_y * qua_y + qua_z * qua_z)
+        self.yaw_init = math.atan2(t3, t4)
+
+    def getImuOrientation(self) -> float:
+        return -self.pitch_init, self.yaw_init
     
     def send_foc_command(self, current_right, current_left):
         msg = Float32MultiArray()
@@ -51,8 +68,8 @@ class RosTopicManager(Node):
 class robotController():
     def __init__(self) -> None:
         rclpy.init()
-        ros_manager = RosTopicManager()
-        self.ros_manager_thread = threading.Thread(target=rclpy.spin, args=(ros_manager,), daemon=True)
+        self.ros_manager = RosTopicManager()
+        self.ros_manager_thread = threading.Thread(target=rclpy.spin, args=(self.ros_manager,), daemon=True)
         self.ros_manager_thread.start()
         self.running_flag = False
 
@@ -72,24 +89,14 @@ class robotController():
         self.startController()
 
     def init_unitree_motor(self, motor_num=6):
-        for id in range(motor_num):
-            cmd = MotorCmd()
-            cmd.id = id
-            data = MotorData()
-            data.motorType = MotorType.GO_M8010_6
-            cmd.motorType = MotorType.GO_M8010_6
-            cmd.mode = queryMotorMode(MotorType.GO_M8010_6,MotorMode.FOC)
-            self.motor_cmd_list.append(cmd)
-            self.motor_data_list.append(data)         
+        pass       
     
     def locklegs(self, motor_pos=[0., 0., 0., 0., 0., 0.]):
-        serial = SerialPort('/dev/ttyUSB0')
-        for cmd, data, q in zip(self.motor_cmd_list, self.motor_data_list, motor_pos):
-            cmd.q = q
-            serial.sendRecv(cmd, data)
+        pass
 
     def controller(self):
         while self.running_flag:
+
             pass
 
     def startController(self):

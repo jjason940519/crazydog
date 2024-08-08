@@ -20,9 +20,9 @@ class focCommandSubscriber(Node):
 
     def listener_callback(self, msg):
         motor1_current = max(-20, min(20, msg.data[0]))     # constrain -20~20
-        motor1_current = max(-20, min(20, msg.data[1]))     # constrain -20~20
+        motor2_current = max(-20, min(20, msg.data[1]))     # constrain -20~20
         motor1_cmd = int(motor1_current*16384/20)
-        motor2_cmd = int(motor1_current*16384/20)
+        motor2_cmd = int(motor2_current*16384/20)
         print(motor1_cmd, motor2_cmd)
         motor1_highByte, motor1_lowByte = self.int_to_high_low_bytes(motor1_cmd)
         motor2_highByte, motor2_lowByte = self.int_to_high_low_bytes(motor2_cmd)
