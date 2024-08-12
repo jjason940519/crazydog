@@ -22,13 +22,11 @@ class loadRobotModel():
         plt.plot(com[0], com[2], marker = 'x')
 
         J = pin.computeJointJacobians(self.model, self.data, self.pos)
-        print("J", J)
 
         com_lenth_vector = com - self.data.oMi[-1].translation
         com_lenth = (com_lenth_vector[0]**2+com_lenth_vector[2]**2)**(1/2)
 
         for oMi in self.data.oMi:
-            print(oMi.translation)
             plt.scatter(oMi.translation[0], oMi.translation[2]) 
         
         if plot:
@@ -70,7 +68,6 @@ class loadRobotModel():
                 wheel_mass += inertia.mass
             else:
                 body_mass += inertia.mass
-        
         return body_mass
     
 

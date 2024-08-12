@@ -19,8 +19,8 @@ class focCommandSubscriber(Node):
         self.bus = can.interface.Bus(channel=can_interface, interface='socketcan')
 
     def listener_callback(self, msg):
-        motor1_current = max(-20, min(20, msg.data[0]))     # constrain -20~20
-        motor2_current = max(-20, min(20, msg.data[1]))     # constrain -20~20
+        motor1_current = max(-10, min(10, msg.data[0]))     # constrain -20~20
+        motor2_current = max(-10, min(10, msg.data[1]))     # constrain -20~20
         motor1_cmd = int(motor1_current*16384/20)
         motor2_cmd = int(motor2_current*16384/20)
         print(motor1_cmd, motor2_cmd)
@@ -43,7 +43,7 @@ class focCommandSubscriber(Node):
             self.bus.send(self.canMsg)
             
         except can.CanError:
-            print("Failed to send message")
+            self.get_logger().error("CAN failed to send message")
 
     def int_to_high_low_bytes(self, value):
         high_byte = (value >> 8) & 0xFF  # Extract the high byte

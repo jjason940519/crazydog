@@ -16,7 +16,7 @@ class IMUNode(Node):
         super().__init__('imu_node')
 
         self.python_version = platform.python_version()[0]
-        self.port = self.declare_parameter('port', '/dev/ttyUSB2').value
+        self.port = self.declare_parameter('port', '/dev/imu').value
         self.baudrate = self.declare_parameter('baudrate', 921600).value
         self.gra_normalization = self.declare_parameter('gra_normalization', True).value
 

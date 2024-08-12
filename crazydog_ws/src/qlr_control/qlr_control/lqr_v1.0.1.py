@@ -12,6 +12,7 @@ import traceback
 import math
 import numpy as np
 from LQR_pin import InvertedPendulumLQR
+from sensor_msgs.msg import Imu
 
 WHEEL_RADIUS = 0.08     # m
 WHEEL_MASS = 0.695  # kg
@@ -28,7 +29,7 @@ class RosTopicManager(Node):
     def __init__(self):
         super().__init__('ros_topic_manager')
         self.foc_data_subscriber = self.create_subscription(Float32MultiArray,'foc_msg', self.foc_callback, 1)
-        self.imu_subscriber = self.create_subscription(Float32MultiArray,'hansfree/imu', self.imu_callback, 1)
+        self.imu_subscriber = self.create_subscription(Imu,'handsfree/imu', self.imu_callback, 1)
         self.foc_command_publisher = self.create_publisher(Float32MultiArray, 'foc_command', 1)
         self.foc_right = focMotor()
         self.foc_left = focMotor()
@@ -51,10 +52,10 @@ class RosTopicManager(Node):
             self.foc_left.current = msg.data[3]
             self.foc_left.temperature = msg.data[4]
     
-    def send_foc_command(self, current_right, current_left):
+    def send_foc_command(self, current_left, current_right):
         msg = Float32MultiArray()
         torque_const = 0.3  # N-m/A
-        msg.data = [current_right/torque_const, current_left/torque_const]
+        msg.data = [current_left/torque_const, current_right/torque_const]
         self.foc_command_publisher.publish(msg)
 
     def get_foc_status(self):
@@ -76,7 +77,7 @@ class RosTopicManager(Node):
         # self.pitch_dot = msg.angular_velocity.y
 
     def get_orientation(self):
-        return self.row, self.row_dot
+        return -self.row, -self.row_dot
 
 class robotController():
     def __init__(self) -> None:
@@ -90,7 +91,7 @@ class robotController():
                                                   urdf=URDF_PATH, 
                                                   wheel_r=WHEEL_RADIUS, 
                                                   M=WHEEL_MASS, Q=Q, R=R, 
-                                                  delta_t=1/200, 
+                                                  delta_t=1/500, 
                                                   show_animation=False)
         self.ros_manager = RosTopicManager()
         self.ros_manager_thread = threading.Thread(target=rclpy.spin, args=(self.ros_manager,), daemon=True)
@@ -143,7 +144,12 @@ class robotController():
 
             # get u from lqr
             U = np.copy(self.lqr_controller.lqr_control(X))
-            self.ros_manager.send_foc_command(U[0, 0], U[0, 0])
+            print(X)
+            # print(U[0, 0])
+            print('freq:', 1/dt)
+            time.sleep(1e-3)
+            # print(X)
+            # self.ros_manager.send_foc_command(U[0, 0], U[0, 0])
 
 
     def disableController(self):
@@ -169,10 +175,12 @@ def main(args=None):
             elif cmd == "exit":
                 robot.disableController()
                 break
-
-        except Exception as e:
-            traceback.print_exc()
+        except KeyboardInterrupt:
+            robot.disableController()
             break
+        # except Exception as e:
+        #     traceback.print_exc()
+        #     break
 
 
 if __name__ == '__main__':
