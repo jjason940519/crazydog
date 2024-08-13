@@ -8,7 +8,7 @@ import urdf_loader
 
 class InvertedPendulumLQR:
     # def __init__(self, hip, knee, l_bar=3.0, M=0.48, m=2*(0.06801+0.07172)+0.45376, g=9.8, Q=None, R=None, delta_t=1/50, sim_time=15.0, show_animation=True):
-    def __init__(self, urdf=None, pos = None, wheel_r=None, M=None, m=None, g=9.81, Q=None, R=None, delta_t=1/80, sim_time=15.0, show_animation=True):    
+    def __init__(self, urdf=None, pos = None, wheel_r=None, M=None, m=None, g=9.81, Q=None, R=None, delta_t=None, sim_time=15.0, show_animation=True):    
     # transform isaac sim angle to com.py angle
         robot = urdf_loader.loadRobotModel(urdf_path=urdf)
         robot.pos = pos
@@ -21,8 +21,8 @@ class InvertedPendulumLQR:
         self.nx = 4  # number of states
         self.nu = 1  # number of inputs
         self.wheel_r = wheel_r
-        self.Q = Q if Q is not None else np.diag([0, 1.5, 150.0, 100.0])  # state cost matrix , best in IsaacSim
-        self.R = R if R is not None else np.diag([1e-6])  # input cost matrix
+        self.Q = Q #if Q is not None else np.diag([0, 1.5, 150.0, 100.0])  # state cost matrix , best in IsaacSim
+        self.R = R #if R is not None else np.diag([1e-6])  # input cost matrix
 
         # self.Q = Q if Q is not None else np.diag([0.1, 0.001, 30.0, 0.0])  # state cost matrix
         # self.R = R if R is not None else np.diag([0.001])  # input cost matrix
@@ -133,9 +133,9 @@ class InvertedPendulumLQR:
         eigVals, eigVecs = eig(A - B @ K)
         return K, P, eigVals
 
-    def lqr_control(self, x):
+    def lqr_control(self, x, x_desire):
         start = time.time()
-        u = -self.K @ x
+        u = -self.K @ (x - x_desire)
         # elapsed_time = time.time() - start
         # print(f"calc time:{elapsed_time:.6f} [sec]")
         return u

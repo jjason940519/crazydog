@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 
-from std_msgs.msg import Float32MultiArray
+from std_msgs.msg import Float32MultiArray, Float32
 import threading
 
 import time
@@ -13,6 +13,7 @@ import math
 import numpy as np
 from LQR_pin import InvertedPendulumLQR
 from sensor_msgs.msg import Imu
+import matplotlib.pyplot as plt
 
 WHEEL_RADIUS = 0.08     # m
 WHEEL_MASS = 0.695  # kg
@@ -31,31 +32,36 @@ class RosTopicManager(Node):
         self.foc_data_subscriber = self.create_subscription(Float32MultiArray,'foc_msg', self.foc_callback, 1)
         self.imu_subscriber = self.create_subscription(Imu,'handsfree/imu', self.imu_callback, 1)
         self.foc_command_publisher = self.create_publisher(Float32MultiArray, 'foc_command', 1)
+        self.imu_monitor = self.create_publisher(Float32, 'imu_monitor', 1)
+        self.tau_monitor = self.create_publisher(Float32, 'tau_monitor', 1)
         self.foc_right = focMotor()
         self.foc_left = focMotor()
         # self.pitch_last = 0
         # self.pitch_dot = 0
         self.row = 0
+        self.row_last = 0
         self.row_dot = 0
         self.dt = 1/300
 
 
     def foc_callback(self, msg):
-        if msg.data[0] == 514.: # motor right
-            self.foc_right.angle = -msg.data[1]
-            self.foc_right.speed = -msg.data[2]
-            self.foc_right.current = -msg.data[3]
-            self.foc_right.temperature = msg.data[4]
-        elif msg.data[0] == 513.:   # motor left
+        if msg.data[0] == 513.:   # motor left
             self.foc_left.angle = msg.data[1]
             self.foc_left.speed = msg.data[2]
             self.foc_left.current = msg.data[3]
             self.foc_left.temperature = msg.data[4]
+        elif msg.data[0] == 514.: # motor right
+            self.foc_right.angle = -msg.data[1]
+            self.foc_right.speed = -msg.data[2]
+            self.foc_right.current = -msg.data[3]
+            self.foc_right.temperature = msg.data[4]
+        else:
+            self.get_logger().error('foc callback id error')
     
     def send_foc_command(self, current_left, current_right):
         msg = Float32MultiArray()
         torque_const = 0.3  # N-m/A
-        msg.data = [current_left/torque_const, current_right/torque_const]
+        msg.data = [current_left/torque_const, -current_right/torque_const]
         self.foc_command_publisher.publish(msg)
 
     def get_foc_status(self):
@@ -71,7 +77,9 @@ class RosTopicManager(Node):
         t1 = +1.0 - 2.0 * (qua_x * qua_x + qua_y * qua_y)
         self.row = math.atan2(t0, t1)
         # self.pitch = -(math.asin(2 * (qua_w * qua_y - qua_z * qua_x)) - self.pitch_bias) 
-        self.row_dot = msg.angular_velocity.x
+        # self.row_dot = msg.angular_velocity.x
+        self.row_dot = (self.row - self.row_last) / self.dt
+        self.row_last = self.row
         # self.pitch_dot = (self.pitch - self.pitch_last) / self.dt
         # self.pitch_last = self.pitch
         # self.pitch_dot = msg.angular_velocity.y
@@ -82,7 +90,8 @@ class RosTopicManager(Node):
 class robotController():
     def __init__(self) -> None:
         rclpy.init()
-        Q = np.diag([0, 1.0, 1.0, 1.0])
+        # K: [[ 2.97946709e-07  7.36131891e-05 -1.28508761e+01 -4.14185118e-01]]
+        Q = np.diag([1e-9, 0.00001, 0.01, 0.0000001])       # 1e-9, 1e-9, 0.01, 1e-6
         R = np.diag(np.diag([1e-6]))
         q = np.array([0., 0., 0., 0., 0., 0., 1.,
                             0., -1.18, 2.0, 1., 0.,
@@ -118,14 +127,13 @@ class robotController():
         self.lqr_thread.start()
 
     def controller(self):
-        print('controller start')
+        self.ros_manager.get_logger().info('controller start')
         X = np.zeros((4, 1))    # X = [x, x_dot, theta, theta_dot]
         U = np.zeros((1, 1))
         t0 = time.time()
-        count = 0
-        count_drop = 0
+        X_desire = np.zeros((4, 1))
+        X_desire[2, 0] = 0.07    # middle angle
         while self.running_flag:
-            count += 1
             t1 = time.time()
             dt = t1 - t0
             t0 = t1
@@ -133,30 +141,43 @@ class robotController():
             X_last = np.copy(X)
             foc_status_left, foc_status_right = self.ros_manager.get_foc_status()
             # get motor data
-            X[1, 0] = (foc_status_left.speed + foc_status_right.speed) / 2
+            X[1, 0] = (foc_status_left.speed + foc_status_right.speed) / 2 * (2*np.pi*WHEEL_RADIUS)/60
             X[0, 0] = X_last[0, 0] + X[1, 0] * dt * WHEEL_RADIUS     # wheel radius 0.08m
             # get IMU data
             X[2, 0], X[3, 0] = self.ros_manager.get_orientation()
-            # if abs(X[2, 0]) > math.radians(50):     # constrain
-            #     u[0, 0] = 0.0
-            #     self.ros_manager.send_foc_command(u[0,0], u[0,0])
-            #     continue
+            # X[2, 0], _ = self.ros_manager.get_orientation()
+            # X[3, 0] = (X[2, 0] - X_last[2, 0]) / dt
+            if abs(X[2, 0]) > math.radians(15):     # constrain
+                # U[0, 0] = 0.0
+                self.ros_manager.send_foc_command(0.0, 0.0)
+                continue
 
             # get u from lqr
-            U = np.copy(self.lqr_controller.lqr_control(X))
+            U = np.copy(self.lqr_controller.lqr_control(X, X_desire))
             print(X)
-            # print(U[0, 0])
+            print('u:', U[0, 0])
             print('freq:', 1/dt)
-            time.sleep(1e-3)
+            # time.sleep(3e-3)
             # print(X)
-            # self.ros_manager.send_foc_command(U[0, 0], U[0, 0])
+            motor_command = U[0, 0]
+            self.ros_manager.send_foc_command(motor_command, motor_command)
 
+            imu_msg = Float32()
+            imu_msg.data = X[1, 0]
+            self.ros_manager.imu_monitor.publish(imu_msg)
+
+            tau_msg = Float32()
+            tau_msg.data = U[0, 0]
+            self.ros_manager.tau_monitor.publish(tau_msg)
+            
+        # self.ros_manager.send_foc_command(0.0, 0.0)
 
     def disableController(self):
         self.running_flag = False
+        self.ros_manager.send_foc_command(0.0, 0.0)
         if self.lqr_thread is not None:
             self.lqr_thread.join()
-        print("disable controller")
+        self.ros_manager.get_logger().info("disable controller")
 
 def main(args=None):
     robot = robotController()
