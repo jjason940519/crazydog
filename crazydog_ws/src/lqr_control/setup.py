@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'pidControl'
+package_name = 'lqr_control'
 
 setup(
     name=package_name,
@@ -13,8 +13,8 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='anson',
-    maintainer_email='anson@todo.todo',
+    maintainer='crazydog',
+    maintainer_email='crazydog@todo.todo',
     description='TODO: Package description',
     license='TODO: License declaration',
     tests_require=['pytest'],
