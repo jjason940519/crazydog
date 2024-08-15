@@ -11,7 +11,7 @@ import sys
 import traceback
 import math
 import numpy as np
-from LQR_pin import InvertedPendulumLQR
+from MPC_pin import InvertedPendulumMPC
 from sensor_msgs.msg import Imu
 import matplotlib.pyplot as plt
 
@@ -19,7 +19,7 @@ import unitree_motor_command as um
 
 WHEEL_RADIUS = 0.08     # m
 WHEEL_MASS = 0.695  # kg
-URDF_PATH = "/home/crazydog/crazydog/crazydog_ws/src/lqr_control/lqr_control/robot_models/big bipedal robot v1/urdf/big bipedal robot v1.urdf"
+URDF_PATH = "/home/crazydog/crazydog/crazydog_ws/src/mpc_control/mpc_control/robot_models/big bipedal robot v1/urdf/big bipedal robot v1.urdf"
 
 class focMotor():
     def __init__(self):
@@ -93,16 +93,16 @@ class robotController():
     def __init__(self) -> None:
         rclpy.init()
         # K: [[ 2.97946709e-07  7.36131891e-05 -1.28508761e+01 -4.14185118e-01]]
-        Q = np.diag([1e-9, 1e-5, 0.01, 1e-6])       # 1e-9, 1e-9, 0.01, 1e-6
-        R = np.diag(np.diag([1e-6]))
+        Q = [0.0, 0.0, 10.0, 0.01]       # 1e-9, 1e-9, 0.01, 1e-6
+        R = [0.001]
         q = np.array([0., 0., 0., 0., 0., 0., 1.,
                             0., -1.18, 2.0, 1., 0.,
                             0., -1.18, 2.0, 1., 0.])
-        self.lqr_controller = InvertedPendulumLQR(pos=q, 
+        self.mpc_controller = InvertedPendulumMPC(pos=q, 
                                                   urdf=URDF_PATH, 
                                                   wheel_r=WHEEL_RADIUS, 
                                                   M=WHEEL_MASS, Q=Q, R=R, 
-                                                  delta_t=1/500, 
+                                                  delta_t=1/200, 
                                                   show_animation=False)
         self.ros_manager = RosTopicManager()
         self.ros_manager_thread = threading.Thread(target=rclpy.spin, args=(self.ros_manager,), daemon=True)
@@ -151,7 +151,7 @@ class robotController():
         U = np.zeros((1, 1))
         t0 = time.time()
         X_desire = np.zeros((4, 1))
-        X_desire[2, 0] = 0.07    # middle angle
+        X_desire[2, 0] = 0.1    # middle angle
         while self.running_flag:
             t1 = time.time()
             dt = t1 - t0
@@ -170,9 +170,10 @@ class robotController():
                 # U[0, 0] = 0.0
                 self.ros_manager.send_foc_command(0.0, 0.0)
                 continue
-
-            # get u from lqr
-            U = np.copy(self.lqr_controller.lqr_control(X, X_desire))
+            
+            self.mpc_controller.update(X)
+            # get u from mpc
+            U = np.copy(self.mpc_controller.solve())
             print(X)
             print('u:', U[0, 0])
             print('freq:', 1/dt)

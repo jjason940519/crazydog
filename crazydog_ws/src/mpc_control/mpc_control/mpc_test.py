@@ -18,15 +18,40 @@ lqr_controller = InvertedPendulumLQR(pos=pos,
                                     M=WHEEL_MASS, 
                                     delta_t=1/100, 
                                     show_animation=False)
+# Ad = sparse.csc_matrix(lqr_controller.A.tolist())
+# Bd = sparse.csc_matrix(lqr_controller.B.tolist())
+l_bar = 2.0  # length of bar
+M = 1.0  # [kg]
+m = 0.3  # [kg]
+g = 9.8  # [m/s^2]
+delta_t = 1/100
+nx = 4  # number of state
+nu = 1  # number of input
+A = np.array([
+        [0.0, 1.0, 0.0, 0.0],
+        [0.0, 0.0, m * g / M, 0.0],
+        [0.0, 0.0, 0.0, 1.0],
+        [0.0, 0.0, g * (M + m) / (l_bar * M), 0.0]
+    ])
+A = np.eye(nx) + delta_t * A
+
+B = np.array([
+    [0.0],
+    [1.0 / M],
+    [0.0],
+    [1.0 / (l_bar * M)]
+])
+B = delta_t * B
 Ad = sparse.csc_matrix(lqr_controller.A.tolist())
 Bd = sparse.csc_matrix(lqr_controller.B.tolist())
+
 
 [nx, nu] = Bd.shape
 
 # Constraints
 u0 = 0
-umin = np.array([-1.]) - u0
-umax = np.array([1.]) - u0
+umin = np.array([-10.]) - u0
+umax = np.array([10.]) - u0
 xmin = np.array([-np.inf,-np.inf,-np.inf,-np.inf])
 xmax = np.array([np.inf, np.inf, np.inf, np.inf])
 
@@ -73,6 +98,8 @@ prob.setup(P, q, A, l, u)
 nsim = 500
 x01_values = []
 x02_values = []
+x03_values = []
+x00_values = []
 ctrl_values = []
 
 for i in range(nsim):
@@ -98,36 +125,33 @@ for i in range(nsim):
     # Store values for plotting
     x02_values.append(x0[2])
     x01_values.append(x0[1])
+    x00_values.append(x0[0])
+    x03_values.append(x0[3])
     ctrl_values.append(ctrl[0])
 
 
 # Plotting
-fig, axs = plt.subplots(3, 1, figsize=(10, 8))
+fig, axs = plt.subplots(2, 1, figsize=(10, 8))
 
 # Plot x0
-axs[0].plot(range(nsim), x01_values, label='x0')
+axs[0].plot(range(nsim), x00_values, label='x')
+axs[0].plot(range(nsim), x01_values, label='x_dot')
+axs[0].plot(range(nsim), x02_values, label='theta')
+axs[0].plot(range(nsim), x03_values, label='theta_dot')
 axs[0].set_title('State x dot over time')
 axs[0].set_xlabel('Iteration')
 axs[0].set_ylabel('State')
 axs[0].legend()
 axs[0].grid(True)
 
-# Plot x0
-axs[1].plot(range(nsim), x02_values, label='x0')
-axs[1].set_title('State theta over time')
-axs[1].set_xlabel('Iteration')
-axs[1].set_ylabel('State')
-axs[1].legend()
-axs[1].grid(True)
-
 
 # Plot ctrl
-axs[2].plot(range(nsim), ctrl_values, label='ctrl', color='orange')
-axs[2].set_title('Control Input ctrl over time')
-axs[2].set_xlabel('Iteration')
-axs[2].set_ylabel('Control Input')
-axs[2].legend()
-axs[2].grid(True)
+axs[1].plot(range(nsim), ctrl_values, label='ctrl', color='orange')
+axs[1].set_title('Control Input ctrl over time')
+axs[1].set_xlabel('Iteration')
+axs[1].set_ylabel('Control Input')
+axs[1].legend()
+axs[1].grid(True)
 
 
 # Save the plot as an image file

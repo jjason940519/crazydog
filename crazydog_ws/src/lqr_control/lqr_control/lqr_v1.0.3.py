@@ -93,7 +93,7 @@ class robotController():
     def __init__(self) -> None:
         rclpy.init()
         # K: [[ 2.97946709e-07  7.36131891e-05 -1.28508761e+01 -4.14185118e-01]]
-        Q = np.diag([1e-9, 1e-5, 0.01, 1e-6])       # 1e-9, 1e-9, 0.01, 1e-6
+        Q = np.diag([1e-9, 1e-9, 0.01, 1e-6])       # 1e-9, 1e-9, 0.01, 1e-6
         R = np.diag(np.diag([1e-6]))
         q = np.array([0., 0., 0., 0., 0., 0., 1.,
                             0., -1.18, 2.0, 1., 0.,
@@ -122,21 +122,21 @@ class robotController():
         self.unitree2.inital_all_motor()
 
     def locklegs(self):
-        while self.MOTOR1.data.q >= self.MOTOR1.inital_position + 0.33*6.33 and self.MOTOR4.data.q  <= self.MOTOR4.inital_position  :
+        while self.MOTOR1.data.q >= self.MOTOR1.inital_position_cheak_point + 0.33*6.33 and self.MOTOR4.data.q  <= self.MOTOR4.inital_position_cheak_point -0.33*6.33  :
             self.unitree.position_force_velocity_cmd(motor_number = 1,kp = 0,kd = 0.1, position = 0 ,torque = 0, velocity = 0.01)
             self.unitree2.position_force_velocity_cmd(motor_number = 4 ,kp = 0,kd = 0.1, position = 0 ,torque = 0, velocity=-0.01)
         time.sleep(0.01)
         for i in range(36):                        
-            self.unitree.position_force_velocity_cmd(motor_number = 1,kp = i,kd = 0.12, position = self.MOTOR1.inital_position + 0.33*6.33)
-            self.unitree2.position_force_velocity_cmd(motor_number = 4 ,kp = i,kd = 0.12, position = self.MOTOR4.inital_position - 0.33*6.33)
+            self.unitree.position_force_velocity_cmd(motor_number = 1,kp = i,kd = 0.12, position = self.MOTOR1.inital_position_cheak_point + 0.33*6.33)
+            self.unitree2.position_force_velocity_cmd(motor_number = 4 ,kp = i,kd = 0.12, position = self.MOTOR4.inital_position_cheak_point - 0.33*6.33)
             time.sleep(0.1)
-        while self.MOTOR2.data.q >= self.MOTOR2.inital_position + 0.33*6.33*1.6 and self.MOTOR5.data.q  <= self.MOTOR5.inital_position - 0.33*6.33*1.6:
+        while self.MOTOR2.data.q >= self.MOTOR2.inital_position_cheak_point + 0.33*6.33*1.6 and self.MOTOR5.data.q  <= self.MOTOR5.inital_position_cheak_point - 0.33*6.33*1.6:
             self.unitree.position_force_velocity_cmd(motor_number = 2,kp = 0,kd = 0.16, position = 0 ,torque = 0, velocity = 0.01)
             self.unitree2.position_force_velocity_cmd(motor_number = 5 ,kp = 0,kd = 0.16, position = 0 ,torque = 0, velocity=-0.01)
         time.sleep(0.01)
         for i in range(36):                        
-            self.unitree.position_force_velocity_cmd(motor_number = 2,kp = i,kd = 0.15, position = self.MOTOR2.inital_position + 0.6*6.33*1.6)
-            self.unitree2.position_force_velocity_cmd(motor_number = 5 ,kp = i,kd = 0.15, position = self.MOTOR5.inital_position - 0.6*6.33*1.6)
+            self.unitree.position_force_velocity_cmd(motor_number = 2,kp = i,kd = 0.15, position = self.MOTOR2.inital_position_cheak_point + 0.6*6.33*1.6)
+            self.unitree2.position_force_velocity_cmd(motor_number = 5 ,kp = i,kd = 0.15, position = self.MOTOR5.inital_position_cheak_point - 0.6*6.33*1.6)
             time.sleep(0.1)
 
     def startController(self):
@@ -151,7 +151,7 @@ class robotController():
         U = np.zeros((1, 1))
         t0 = time.time()
         X_desire = np.zeros((4, 1))
-        X_desire[2, 0] = 0.07    # middle angle
+        X_desire[2, 0] = 0.06    # middle angle
         while self.running_flag:
             t1 = time.time()
             dt = t1 - t0
