@@ -4,6 +4,7 @@ import scipy as sp
 from scipy import sparse
 from LQR_pin import InvertedPendulumLQR
 import matplotlib.pyplot as plt
+import time
 
 WHEEL_RADIUS = 0.08     # m
 WHEEL_MASS = 0.695  # kg
@@ -16,56 +17,56 @@ lqr_controller = InvertedPendulumLQR(pos=pos,
                                     urdf=URDF_PATH, 
                                     wheel_r=WHEEL_RADIUS, 
                                     M=WHEEL_MASS, 
-                                    delta_t=1/100, 
+                                    delta_t=1/300, 
                                     show_animation=False)
-# Ad = sparse.csc_matrix(lqr_controller.A.tolist())
-# Bd = sparse.csc_matrix(lqr_controller.B.tolist())
-l_bar = 2.0  # length of bar
-M = 1.0  # [kg]
-m = 0.3  # [kg]
-g = 9.8  # [m/s^2]
-delta_t = 1/100
-nx = 4  # number of state
-nu = 1  # number of input
-A = np.array([
-        [0.0, 1.0, 0.0, 0.0],
-        [0.0, 0.0, m * g / M, 0.0],
-        [0.0, 0.0, 0.0, 1.0],
-        [0.0, 0.0, g * (M + m) / (l_bar * M), 0.0]
-    ])
-A = np.eye(nx) + delta_t * A
-
-B = np.array([
-    [0.0],
-    [1.0 / M],
-    [0.0],
-    [1.0 / (l_bar * M)]
-])
-B = delta_t * B
 Ad = sparse.csc_matrix(lqr_controller.A.tolist())
 Bd = sparse.csc_matrix(lqr_controller.B.tolist())
+# l_bar = 2.0  # length of bar
+# M = 1.0  # [kg]
+# m = 0.3  # [kg]
+# g = 9.8  # [m/s^2]
+# delta_t = 1/100
+# nx = 4  # number of state
+# nu = 1  # number of input
+# A = np.array([
+#         [0.0, 1.0, 0.0, 0.0],
+#         [0.0, 0.0, m * g / M, 0.0],
+#         [0.0, 0.0, 0.0, 1.0],
+#         [0.0, 0.0, g * (M + m) / (l_bar * M), 0.0]
+#     ])
+# A = np.eye(nx) + delta_t * A
+
+# B = np.array([
+#     [0.0],
+#     [1.0 / M],
+#     [0.0],
+#     [1.0 / (l_bar * M)]
+# ])
+# B = delta_t * B
+# Ad = sparse.csc_matrix(lqr_controller.A.tolist())
+# Bd = sparse.csc_matrix(lqr_controller.B.tolist())
 
 
 [nx, nu] = Bd.shape
 
 # Constraints
 u0 = 0
-umin = np.array([-10.]) - u0
-umax = np.array([10.]) - u0
+umin = np.array([-1.]) - u0
+umax = np.array([1.]) - u0
 xmin = np.array([-np.inf,-np.inf,-np.inf,-np.inf])
 xmax = np.array([np.inf, np.inf, np.inf, np.inf])
 
 # Objective function
-Q = sparse.diags([0., 1.0, 100.0, 0.1])
+Q = sparse.diags([0., 1.0, 100.0, 0.005])
 QN = Q
-R = 0.1*sparse.eye(1)
+R = 0.001*sparse.eye(1)
 
 # Initial and reference states
 x0 = np.array([0., 0., 0.2, 0.])
 xr = np.array([0., 0., 0., 0.])
 
 # Prediction horizon
-N = 10
+N = 50
 
 # Cast MPC problem to a QP: x = (x(0),x(1),...,x(N),u(0),...,u(N-1))
 # - quadratic objective
@@ -95,13 +96,14 @@ prob = osqp.OSQP()
 prob.setup(P, q, A, l, u)
 
 # Simulate in closed loop
-nsim = 500
+nsim = 1000
 x01_values = []
 x02_values = []
 x03_values = []
 x00_values = []
 ctrl_values = []
 
+t0 = time.time()
 for i in range(nsim):
     # Solve
     res = prob.solve()
@@ -121,6 +123,11 @@ for i in range(nsim):
     print('i', i)
     print('X', x0)
     print('u', ctrl)
+
+    t1 = time.time()
+    print('freq', 1/(t1-t0))
+    t0 = t1
+
 
     # Store values for plotting
     x02_values.append(x0[2])
@@ -156,5 +163,5 @@ axs[1].grid(True)
 
 # Save the plot as an image file
 plt.tight_layout()
-plt.savefig('x0_ctrl_plot.png')
+plt.savefig('osqp.png')
 plt.show()

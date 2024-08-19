@@ -27,7 +27,7 @@ class InvertedPendulumMPC:
         self.wheel_r = wheel_r
         self.Q = Q #if Q is not None else np.diag([0, 1.5, 150.0, 100.0])  # state cost matrix , best in IsaacSim
         self.R = R #if R is not None else np.diag([1e-6])  # input cost matrix
-        self.N = 10
+        self.N = 50
 
         self.delta_t = delta_t  # time tick [s]
         self.sim_time = sim_time  # simulation time [s]
@@ -58,7 +58,7 @@ class InvertedPendulumMPC:
 
         # Initial and reference states
         x0 = np.array([0., 0., 0., 0.])
-        xr = np.array([0., 0., 0., 0.])
+        xr = np.array([0., 0., 0.07, 0.])
 
         # Prediction horizon
         N = self.N

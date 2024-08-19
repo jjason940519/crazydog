@@ -93,7 +93,7 @@ class robotController():
     def __init__(self) -> None:
         rclpy.init()
         # K: [[ 2.97946709e-07  7.36131891e-05 -1.28508761e+01 -4.14185118e-01]]
-        Q = np.diag([1e-9, 1e-9, 0.01, 1e-6])       # 1e-9, 1e-9, 0.01, 1e-6
+        Q = np.diag([1e-9, 1e-6, 0.01, 1e-6])       # 1e-9, 1e-9, 0.01, 1e-6
         R = np.diag(np.diag([1e-6]))
         q = np.array([0., 0., 0., 0., 0., 0., 1.,
                             0., -1.18, 2.0, 1., 0.,

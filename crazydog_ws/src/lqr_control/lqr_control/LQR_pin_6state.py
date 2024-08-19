@@ -8,7 +8,7 @@ import urdf_loader
 
 class InvertedPendulumLQR:
     # def __init__(self, hip, knee, l_bar=3.0, M=0.48, m=2*(0.06801+0.07172)+0.45376, g=9.8, Q=None, R=None, delta_t=1/50, sim_time=15.0, show_animation=True):
-    def __init__(self, urdf=None, pos = None, wheel_r=None, M=None, m=None, g=9.81, Q=None, R=None, d=0.355, delta_t=None, sim_time=15.0, show_animation=True):    
+    def __init__(self, urdf=None, pos = None, wheel_r=None, M=None, m=None, g=9.81, Q=None, R=None, D=0.355, delta_t=None, sim_time=15.0, show_animation=True):    
     # transform isaac sim angle to com.py angle
         robot = urdf_loader.loadRobotModel(urdf_path=urdf)
         robot.pos = pos
@@ -17,10 +17,10 @@ class InvertedPendulumLQR:
         self.M = M  # mass of the cart [kg]self.R = R if R is not None else np.diag([0.1])  # input cost matrix
         self.m = robot.calculateMass()  # mass of the pendulum [kg]
         print('cart mass:', self.m)
-        self.d = d
+        self.D = D
         self.g = g  # gravity [m/s^2]
-        self.nx = 4  # number of states
-        self.nu = 1  # number of inputs
+        self.nx = 6  # number of states
+        self.nu = 2  # number of inputs
         self.wheel_r = wheel_r
         self.Q = Q #if Q is not None else np.diag([0, 1.5, 150.0, 100.0])  # state cost matrix , best in IsaacSim
         self.R = R #if R is not None else np.diag([1e-6])  # input cost matrix
@@ -150,6 +150,7 @@ class InvertedPendulumLQR:
         # ])
         # print('A=',A)
         Jz = (1/3) * self.m * self.l_bar**2
+        Jy = (1/12) * self.m * self.D**2
         I = (1/2) * self.M * self.wheel_r**2
         Q_eq = Jz * self.m + (Jz + self.m * self.l_bar * self.l_bar) * \
             (2 * self.M + (2 * I) / (self.wheel_r**2))
@@ -157,12 +158,12 @@ class InvertedPendulumLQR:
         A_43 = self.m*self.l_bar*self.g * \
             (self.m+2*self.M+(2*I/(self.wheel_r**2)))/Q_eq
         A = np.array([
-            [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, A_23, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, A_43, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            [0., 1., 0., 0., 0., 0.],
+            [0., 0., A_23, 0., 0., 0.],
+            [0., 0., 0., 1., 0., 0.],
+            [0., 0., A_43, 0., 0., 0.],
+            [0., 0., 0., 0., 0., 1.],
+            [0., 0., 0., 0., 0., 0.]
 
         
         ])
@@ -177,15 +178,19 @@ class InvertedPendulumLQR:
         # print('B=',B)
         B_21 = (Jz+self.m*self.l_bar**2+self.m *
                 self.l_bar*self.wheel_r)/Q_eq/self.wheel_r
+        B_22 = B_21
         B_41 = -((self.m*self.l_bar/self.wheel_r)+self.m +
                  2*self.M+(2*I/(self.wheel_r**2)))/Q_eq
-        B_61 = 1/self.wheel_r*(self.M*self.d+self.d*I/self.wheel_r**2+2*(1/12)*self.m*self.d^2/self.d)
-        B_62 = -1/self.wheel_r*(self.M*self.d+self.d*I/self.wheel_r**2+2*(1/12)*self.m*self.d^2/self.d)
+        B_42 = B_41
+        B_61 = 1/(self.wheel_r*(self.M*self.D+self.D*I/self.wheel_r**2+2*Jy/self.D))
+        B_62 = -B_61
         B = np.array([
-            [0.0],
-            [2*B_21],
-            [0.0],
-            [2*B_41]
+            [0., 0.],
+            [B_21, B_22],
+            [0., 0.],
+            [B_41, B_42],
+            [0., 0.],
+            [B_61, B_62],
         ])
         B = self.delta_t * B
 
