@@ -11,7 +11,7 @@ import sys
 import traceback
 import math
 import numpy as np
-from LQR_pin_6state import InvertedPendulumLQR
+from LQR_pin import InvertedPendulumLQR
 from sensor_msgs.msg import Imu
 import matplotlib.pyplot as plt
 
@@ -19,8 +19,8 @@ import unitree_motor_command as um
 
 WHEEL_RADIUS = 0.08     # m
 WHEEL_MASS = 0.695  # kg
-URDF_PATH = "/home/crazydog/crazydog/crazydog_ws/src/lqr_control/lqr_control/robot_models/big bipedal robot v1/urdf/big bipedal robot v1.urdf"
 WHEEL_DISTANCE = 0.355
+URDF_PATH = "/home/crazydog/crazydog/crazydog_ws/src/lqr_control/lqr_control/robot_models/big bipedal robot v1/urdf/big bipedal robot v1.urdf"
 
 class PID:
     def __init__(self, Kp, Ki, Kd):
@@ -63,12 +63,6 @@ class RosTopicManager(Node):
         self.row = 0
         self.row_last = 0
         self.row_dot = 0
-        self.yaw = 0
-        self.yaw_last = 0
-        self.yaw_dot = 0
-        self.pitch = 0
-        self.pitch_last = 0
-        self.pitch_dot = 0
         self.dt = 1/300
 
 
@@ -86,56 +80,41 @@ class RosTopicManager(Node):
         else:
             self.get_logger().error('foc callback id error')
     
-    def send_foc_command(self, torque_left, torque_right):
+    def send_foc_command(self, current_left, current_right):
         msg = Float32MultiArray()
         torque_const = 0.3  # N-m/A
-        msg.data = [torque_left/torque_const, -torque_right/torque_const]
+        msg.data = [current_left/torque_const, -current_right/torque_const]
         self.foc_command_publisher.publish(msg)
 
     def get_foc_status(self):
         return self.foc_left, self.foc_right
     
     def imu_callback(self, msg):
-        x = msg.orientation.x
-        y = msg.orientation.y
-        z = msg.orientation.z
-        w = msg.orientation.w
-        """
-        Convert a quaternion into euler angles (roll, pitch, yaw)
-        roll is rotation around x in radians (counterclockwise)
-        pitch is rotation around y in radians (counterclockwise)
-        yaw is rotation around z in radians (counterclockwise)
-        """
-        t0 = +2.0 * (w * x + y * z)
-        t1 = +1.0 - 2.0 * (x * x + y * y)
-        self.roll = math.atan2(t0, t1)
-     
-        t2 = +2.0 * (w * y - z * x)
-        t2 = +1.0 if t2 > +1.0 else t2
-        t2 = -1.0 if t2 < -1.0 else t2
-        self.pitch = math.asin(t2)
-     
-        t3 = +2.0 * (w * z + x * y)
-        t4 = +1.0 - 2.0 * (y * y + z * z)
-        self.yaw = math.atan2(t3, t4)
+        qua_x = msg.orientation.x
+        qua_y = msg.orientation.y
+        qua_z = msg.orientation.z
+        qua_w = msg.orientation.w
+        # *(180/math.pi)+1.5
+        t0 = +2.0 * (qua_w * qua_x + qua_y * qua_z)
+        t1 = +1.0 - 2.0 * (qua_x * qua_x + qua_y * qua_y)
+        self.row = math.atan2(t0, t1)
+        # self.pitch = -(math.asin(2 * (qua_w * qua_y - qua_z * qua_x)) - self.pitch_bias) 
         self.row_dot = msg.angular_velocity.x
-        self.pitch_dot = msg.angular_velocity.y
-        self.yaw_dot = msg.angular_velocity.z
         # self.row_dot = (self.row - self.row_last) / self.dt
-        # self.row_last = self.row
+        self.row_last = self.row
         # self.pitch_dot = (self.pitch - self.pitch_last) / self.dt
         # self.pitch_last = self.pitch
         # self.pitch_dot = msg.angular_velocity.y
 
     def get_orientation(self):
-        return -self.row, -self.row_dot, -self.yaw, -self.yaw_dot
+        return -self.row, -self.row_dot
 
 class robotController():
     def __init__(self) -> None:
         rclpy.init()
         # K: [[ 2.97946709e-07  7.36131891e-05 -1.28508761e+01 -4.14185118e-01]]
-        Q = np.diag([1e-9, 0.1, 2.0, 1e-4, 1e-9, 0.1])       # 1e-9, 1e-9, 0.01, 1e-6
-        R = np.diag(np.diag([1e-2, 1e-2]))
+        Q = np.diag([1e-9, 0.1, 1.0, 1e-4])       # 1e-9, 1e-9, 0.01, 1e-6
+        R = np.diag(np.diag([1e-2]))
         q = np.array([0., 0., 0., 0., 0., 0., 1.,
                             0., -1.18, 2.0, 1., 0.,
                             0., -1.18, 2.0, 1., 0.])
@@ -149,6 +128,7 @@ class robotController():
         self.ros_manager_thread = threading.Thread(target=rclpy.spin, args=(self.ros_manager,), daemon=True)
         self.ros_manager_thread.start()
         self.running_flag = False
+        self.turning_pid = PID(1e-2, 0, 5e-4)
 
         
 
@@ -193,11 +173,14 @@ class robotController():
 
     def controller(self):
         self.ros_manager.get_logger().info('controller start')
-        X = np.zeros((6, 1))    # X = [x, x_dot, theta, theta_dot]
-        U = np.zeros((2, 1))
+        X = np.zeros((4, 1))    # X = [x, x_dot, theta, theta_dot]
+        U = np.zeros((1, 1))
         t0 = time.time()
-        X_desire = np.zeros((6, 1))
-        X_desire[2, 0] = 0.06    # middle angle
+        X_desire = np.zeros((4, 1))
+        X_desire[2, 0] = 0.059    # middle angle
+        start_time = time.time()
+
+        yaw_speed = 0.
         while self.running_flag:
             t1 = time.time()
             dt = t1 - t0
@@ -208,12 +191,8 @@ class robotController():
             # get motor data
             X[1, 0] = (foc_status_left.speed + foc_status_right.speed) / 2 * (2*np.pi*WHEEL_RADIUS)/60
             X[0, 0] = X_last[0, 0] + X[1, 0] * dt * WHEEL_RADIUS     # wheel radius 0.08m
-            
-            X[5, 0] = self.get_yaw_speed(foc_status_left.speed, foc_status_right.speed)
-            X[4, 0] = X_last[5, 0] + X[5, 0] * dt
-            
             # get IMU data
-            X[2, 0], X[3, 0], _, _ = self.ros_manager.get_orientation()
+            X[2, 0], X[3, 0] = self.ros_manager.get_orientation()
             # X[2, 0], _ = self.ros_manager.get_orientation()
             # X[3, 0] = (X[2, 0] - X_last[2, 0]) / dt
             if abs(X[2, 0]) > math.radians(15):     # constrain
@@ -224,31 +203,26 @@ class robotController():
             # get u from lqr
             U = np.copy(self.lqr_controller.lqr_control(X, X_desire))
             # print(X)
-            print('u:', U)
+            # print('u:', U[0, 0])
             # print('freq:', 1/dt)
             # time.sleep(3e-3)
-            # print(X[5,0])
+            # print(X)
             # print(X_desire[2,0])
-            motor_command_left = U[0, 0]
-            motor_command_right = U[1, 0]
+            yaw_speed = self.get_yaw_speed(foc_status_left.speed, foc_status_right.speed)
+            yaw_torque = self.turning_pid.update(0., yaw_speed, dt)
 
-            if motor_command_left > 1.5:
-                motor_command_left = 1.5
-            elif motor_command_left < -1.5:
-                motor_command_left = -1.5
-            if motor_command_right > 1.5:
-                motor_command_right = 1.5
-            elif motor_command_right < -1.5:
-                motor_command_right = -1.5
+            if (time.time()-start_time) < 3:
+                yaw_torque = 0.0
+            motor_command_left = U[0, 0] + yaw_torque
+            motor_command_right = U[0, 0] - yaw_torque
+
+            print(yaw_torque)
+
+
+            motor_command_left = max(-1.5, min(motor_command_left, 1.5))
+            motor_command_right = max(-1.5, min(motor_command_right, 1.5))
+
             self.ros_manager.send_foc_command(motor_command_left, motor_command_right)
-
-            imu_msg = Float32()
-            imu_msg.data = X[1, 0]
-            self.ros_manager.imu_monitor.publish(imu_msg)
-
-            tau_msg = Float32()
-            tau_msg.data = U[0, 0]
-            self.ros_manager.tau_monitor.publish(tau_msg)
             
         # self.ros_manager.send_foc_command(0.0, 0.0)
 
