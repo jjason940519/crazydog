@@ -18,4 +18,14 @@ def generate_launch_description():
             executable='imu_data_pub',
             name='imu_data_pub'
         ),
+        Node(
+            package='joy',
+            executable='joy_node',
+            name='joystick'
+        ),
+        Node(
+            package='robot_interfaces',
+            executable='joy_controller',
+            name='joy_controller'
+        ),
     ])

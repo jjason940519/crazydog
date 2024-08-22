@@ -118,7 +118,7 @@ class RosTopicManager(Node):
         self.joy_angular_vel = msg.angular.z
 
     def get_joy_vel(self):
-        return self.joy_linear_vel, self.joy_angular_vel
+        return self.joy_linear_vel, -self.joy_angular_vel
 
 class robotController():
     def __init__(self) -> None:
@@ -139,7 +139,7 @@ class robotController():
         self.ros_manager_thread = threading.Thread(target=rclpy.spin, args=(self.ros_manager,), daemon=True)
         self.ros_manager_thread.start()
         self.running_flag = False
-        self.turning_pid = PID(1e-2, 0, 5e-4)
+        self.turning_pid = PID(5e-2, 0, 5e-4)
 
         
 
@@ -258,8 +258,6 @@ def main(args=None):
         "i": robot.init_unitree_motor,
         'l': robot.locklegs,
         "start": robot.startController,
-        # "get": robot_motor.getControllerPIDParam,
-        # "clear": robot_motor.mc.cleanerror,
     }
 
     while True:

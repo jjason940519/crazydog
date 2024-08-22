@@ -27,6 +27,7 @@ setup(
             'foc_command_sub = robot_interfaces.foc_command_sub:main',
             'foc_data_pub = robot_interfaces.foc_data_pub:main',
             'imu_data_pub = robot_interfaces.imu_data_pub:main',
+            'joy_controller = robot_interfaces.joy_controller:main',
         ],
     },
 )

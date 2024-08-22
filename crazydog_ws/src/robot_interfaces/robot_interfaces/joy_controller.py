@@ -9,14 +9,14 @@ import time
 
 class SpotControl(Node):
     def __init__(self):
-        super().__init__('SpotControl')
+        super().__init__('JoyControl')
         self.create_subscription(Joy, "joy", self.joy_callback, 1)
         self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 1)
         self.body_pub = self.create_publisher(String, 'body_pose', 1)
 
         self.current_mode = " "
-        self.linear_x_scale = 0.1745
-        self.angular_scale = 0.8
+        self.linear_x_scale = 0.12
+        self.angular_scale = 2.0
         feq = 500
         self.joy = None
         self.cmd = None
@@ -71,8 +71,19 @@ class SpotControl(Node):
         pose.data=str(self.current_mode)
         if self.joy is not None:
             # Now safe to access self.joy.axes
-            vel.linear.x = self.joy.axes[1]*self.linear_x_scale
-            vel.angular.z = self.joy.axes[0]*self.angular_scale
+            if self.joy.axes[1]>0.001:
+                self.joy.axes[1] -= 0.001
+                vel.linear.x = self.joy.axes[1]*self.linear_x_scale
+            elif self.joy.axes[1]<-0.001:
+                self.joy.axes[1] += 0.001
+                vel.linear.x = self.joy.axes[1]*self.linear_x_scale
+            if self.joy.axes[0]>0.001:
+                self.joy.axes[0] -= 0.001
+                vel.linear.z = self.joy.axes[0]*self.angular_scale
+            elif self.joy.axes[0]<-0.001:
+                self.joy.axes[0] += 0.001
+                vel.linear.z = self.joy.axes[0]*self.angular_scale
+
         #pose=self.current_mode
         self.cmd_pub.publish(vel)
         self.body_pub.publish(pose)
