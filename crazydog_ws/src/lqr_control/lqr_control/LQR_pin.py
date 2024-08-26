@@ -13,9 +13,11 @@ class InvertedPendulumLQR:
         robot = urdf_loader.loadRobotModel(urdf_path=urdf)
         robot.pos = pos
         self.com, self.l_bar = robot.calculateCom(plot=False)
+        # self.l_bar = 0.20348261632961423
         print('lenth:', self.l_bar)
         self.M = M  # mass of the cart [kg]self.R = R if R is not None else np.diag([0.1])  # input cost matrix
         self.m = robot.calculateMass()  # mass of the pendulum [kg]
+        # self.m = 8.305
         print('cart mass:', self.m)
         self.g = g  # gravity [m/s^2]
         self.nx = 4  # number of states

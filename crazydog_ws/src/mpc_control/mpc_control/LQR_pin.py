@@ -161,7 +161,7 @@ class InvertedPendulumLQR:
             [0.0, 0.0, 0.0, 1.0],
             [0.0, 0.0, A_43, 0.0]
         ])
-        A = np.eye(self.nx) + self.delta_t * A
+        # A = np.eye(self.nx) + self.delta_t * A
 
         # B = np.array([
         #     [0.0],
@@ -180,7 +180,7 @@ class InvertedPendulumLQR:
             [0.0],
             [2*B_41]
         ])
-        B = self.delta_t * B
+        # B = self.delta_t * B
 
         return A, B
 

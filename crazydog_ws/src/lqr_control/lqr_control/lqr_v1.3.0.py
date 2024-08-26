@@ -12,7 +12,6 @@ import math
 import numpy as np
 from LQR_pin import InvertedPendulumLQR
 from sensor_msgs.msg import Imu
-import matplotlib.pyplot as plt
 
 import unitree_motor_command as um
 

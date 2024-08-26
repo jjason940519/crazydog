@@ -11,18 +11,16 @@ import sys
 import traceback
 import math
 import numpy as np
-from LQR_pin import InvertedPendulumLQR
+from MPC_pin import InvertedPendulumMPC
 from sensor_msgs.msg import Imu
 import matplotlib.pyplot as plt
 
 import unitree_motor_command as um
-import scipy.sparse as sparse
-import osqp
-from LQR_pin import InvertedPendulumLQR
+from mpc_test import *
 
 WHEEL_RADIUS = 0.08     # m
 WHEEL_MASS = 0.695  # kg
-URDF_PATH = "/home/crazydog/crazydog/crazydog_ws/src/lqr_control/lqr_control/robot_models/big bipedal robot v1/urdf/big bipedal robot v1.urdf"
+URDF_PATH = "/home/crazydog/crazydog/crazydog_ws/src/mpc_control/mpc_control/robot_models/big bipedal robot v1/urdf/big bipedal robot v1.urdf"
 
 class focMotor():
     def __init__(self):
@@ -95,18 +93,7 @@ class RosTopicManager(Node):
 class robotController():
     def __init__(self) -> None:
         rclpy.init()
-        # K: [[ 2.97946709e-07  7.36131891e-05 -1.28508761e+01 -4.14185118e-01]]
-        Q = np.diag([1e-9, 1e-5, 0.01, 1e-6])       # 1e-9, 1e-9, 0.01, 1e-6
-        R = np.diag(np.diag([1e-6]))
-        q = np.array([0., 0., 0., 0., 0., 0., 1.,
-                            0., -1.18, 2.0, 1., 0.,
-                            0., -1.18, 2.0, 1., 0.])
-        self.mpc_controller = InvertedPendulumLQR(pos=q, 
-                                                  urdf=URDF_PATH, 
-                                                  wheel_r=WHEEL_RADIUS, 
-                                                  M=WHEEL_MASS, Q=Q, R=R, 
-                                                  delta_t=1/500, 
-                                                  show_animation=False)
+        
         self.ros_manager = RosTopicManager()
         self.ros_manager_thread = threading.Thread(target=rclpy.spin, args=(self.ros_manager,), daemon=True)
         self.ros_manager_thread.start()
@@ -148,109 +135,58 @@ class robotController():
         self.running_flag = True
         self.lqr_thread.start()
 
-    def __init__(self):
-        rclpy.init()
-        self.ros_manager = RosTopicManager()
-        self.ros_manager_thread = threading.Thread(target=rclpy.spin, args=(self.ros_manager,), daemon=True)
-        self.ros_manager_thread.start()
-        self.running_flag = False
-
-    def startController(self):
-        self.mpc_thread = threading.Thread(target=self.controller)
-        self.running_flag = True
-        self.mpc_thread.start()
-
     def controller(self):
-        self.ros_manager.get_logger().info('MPC controller start')
-        
-        # MPC setup
-        n = 4  # Number of state variables [x, x_dot, theta, theta_dot]
-        m = 1  # Control input U
-        horizon = 10  # MPC horizon
-
-        # Dynamics
-        A = np.array([[1.0, 0.002, 0.0, 0.0],
-                    [0.0, 1.0, -0.02936811655151697, 0.0],
-                    [0.0, 0.0, 1.0, 0.002],
-                    [0.0, 0.0, 0.18056130826488961, 1.0]])
-        
-        B = np.array([[0.0], 
-                    [0.015558611994769765], 
-                    [0.0], 
-                    [-0.06607044825583505]])
-
-        # Cost matrices
-        Q = sparse.diags([1.0, 0.0, 0.1, 0.0])  # State cost
-        R = sparse.diags([0.01])  # Input cost
-
-
-        # Equality constraints (dynamics)
-        I_h = sparse.eye(horizon)  # Identity matrix for the horizon
-
-        # This creates a block-diagonal matrix with -A along the diagonal
-        A_eq = sparse.kron(I_h, -A)
-
-        # This creates the off-diagonal blocks of the dynamics matrix, corresponding to the input B
-        # We extend B to match the shape of the dynamic constraints matrix
-        B_eq = sparse.kron(sparse.eye(horizon, k=-1), B)
-
-
-        # Inequality constraints (all less than 1)
-        N = horizon
-        nx = n
-        nu = m
-        xmin = -np.ones(nx)
-        xmax = np.ones(nx)
-        umin = -np.ones(nu)
-        umax = np.ones(nu)
-
-        # Ensure dimensions match
-        Aineq = sparse.eye((N+1)*nx + N*nu)
-        lineq = np.hstack([np.kron(np.ones(N+1), xmin), np.kron(np.ones(N), umin)])
-        uineq = np.hstack([np.kron(np.ones(N+1), xmax), np.kron(np.ones(N), umax)])
-
-        # OSQP setup
-        prob = osqp.OSQP()
-
-        # Precompute constraint matrices
-        P = sparse.block_diag([sparse.kron(sparse.eye(horizon), Q), sparse.kron(sparse.eye(horizon), R)])
-        q = np.zeros(n * horizon + m * horizon)
-        A = sparse.vstack([A_eq, B_eq, Aineq])
-        l = np.hstack([np.zeros(n * horizon), lineq])
-        u = np.hstack([np.zeros(n * horizon), uineq])
-
-        prob.setup(P, q, A, l, u, verbose=False)
-        
-        X = np.zeros((4, 1))
-        X_desire = np.zeros((4, 1))
-        X_desire[2, 0] = 0.1
+        self.ros_manager.get_logger().info('controller start')
+        t0 = time.time()
         
         while self.running_flag:
+            prob = run_mpc()
+            x_init.value = x0
+            # print('TIME: ', round(i*dt, 2), 'STATES: ', [round(state, 2) for state in x0])
+            prob.solve(solver=cp.OSQP, warm_start=True)
+            
+            motor_command = u[:, 0].value
+            # self.ros_manager.send_foc_command(motor_command, motor_command)
+            print('motor', motor_command)
+            t1 = time.time()
+            dt = t1 - t0
+            t0 = t1
+            print('freq:', 1/dt)
+            print('x0:', x0)
+            x0_last = np.copy(x0) 
             foc_status_left, foc_status_right = self.ros_manager.get_foc_status()
-            X[1, 0] = (foc_status_left.speed + foc_status_right.speed) / 2 * (2*np.pi*WHEEL_RADIUS)/60
-            X[0, 0] = X[0, 0] + X[1, 0] * self.ros_manager.dt * WHEEL_RADIUS
-            X[2, 0], X[3, 0] = self.ros_manager.get_orientation()
-
-            if abs(X[2, 0]) > math.radians(15):
+            # get motor data
+            x0[0,] = (foc_status_left.speed + foc_status_right.speed) / 2 * (2*np.pi*WHEEL_RADIUS)/60
+            x0[0, ] = x0_last[0, ] + x0_last[1,] * dt * WHEEL_RADIUS     # wheel radius 0.08m
+            # get IMU data
+            x0[2,], x0[3,] = self.ros_manager.get_orientation()
+            # X[2, 0], _ = self.ros_manager.get_orientation()
+            # X[3, 0] = (X[2, 0] - X_last[2, 0]) / dt
+            if abs(x0[2,]) > math.radians(15):     # constrain
+                # U[0, 0] = 0.0
                 self.ros_manager.send_foc_command(0.0, 0.0)
                 continue
             
-            # Solve MPC
-            prob.update(q=-2 * np.dot(np.hstack([X.flatten() - X_desire.flatten(), np.zeros(m * horizon)]).T, P))
-            res = prob.solve()
-            U = res.x[-horizon*m:-(horizon-1)*m]
+            # self.mpc_controller.update(X)
+            # get u from mpc
+            # U = np.copy(self.mpc_controller.solve())
+            # print(x0)
+            # print('u:', U[0, 0])
+            
+            # time.sleep(3e-3)
+            # print(X)
+            # motor_command = U[0, 0]
+            # self.ros_manager.send_foc_command(motor_command, motor_command)
 
-            motor_command = U[0]
-            print(motor_command)
-    
-            #self.ros_manager.send_foc_command(motor_command, motor_command)
-        
-    def disableController(self):
-        self.running_flag = False
-        self.ros_manager.send_foc_command(0.0, 0.0)
-        if self.mpc_thread is not None:
-            self.mpc_thread.join()
-        self.ros_manager.get_logger().info("MPC controller disabled")
+            # imu_msg = Float32()
+            # imu_msg.data = X[1, 0]
+            # self.ros_manager.imu_monitor.publish(imu_msg)
+
+            # tau_msg = Float32()
+            # tau_msg.data = U[0, 0]
+            # self.ros_manager.tau_monitor.publish(tau_msg)
+            
+        # self.ros_manager.send_foc_command(0.0, 0.0)
 
     def disableController(self):
         self.running_flag = False
