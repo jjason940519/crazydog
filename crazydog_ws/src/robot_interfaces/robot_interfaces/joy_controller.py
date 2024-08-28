@@ -15,8 +15,8 @@ class SpotControl(Node):
         self.body_pub = self.create_publisher(String, 'body_pose', 1)
 
         self.current_mode = " "
-        self.linear_x_scale = 0.12
-        self.angular_scale = 2.0
+        self.linear_x_scale = 0.3
+        self.angular_scale = 1.0
         feq = 500
         self.joy = None
         self.cmd = None
@@ -79,10 +79,10 @@ class SpotControl(Node):
                 vel.linear.x = self.joy.axes[1]*self.linear_x_scale
             if self.joy.axes[0]>0.001:
                 self.joy.axes[0] -= 0.001
-                vel.linear.z = self.joy.axes[0]*self.angular_scale
+                vel.angular.z = self.joy.axes[0]*self.angular_scale
             elif self.joy.axes[0]<-0.001:
                 self.joy.axes[0] += 0.001
-                vel.linear.z = self.joy.axes[0]*self.angular_scale
+                vel.angular.z = self.joy.axes[0]*self.angular_scale
 
         #pose=self.current_mode
         self.cmd_pub.publish(vel)

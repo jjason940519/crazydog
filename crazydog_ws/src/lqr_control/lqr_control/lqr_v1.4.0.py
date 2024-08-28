@@ -57,6 +57,7 @@ class RosTopicManager(Node):
         self.foc_command_publisher = self.create_publisher(Float32MultiArray, 'foc_command', 1)
         self.imu_monitor = self.create_publisher(Float32, 'imu_monitor', 1)
         self.tau_monitor = self.create_publisher(Float32, 'tau_monitor', 1)
+        self.ctrl_timer = self.create_timer(1/500, self.ctrl_callback)
         self.foc_right = focMotor()
         self.foc_left = focMotor()
         # self.pitch_last = 0
@@ -68,6 +69,7 @@ class RosTopicManager(Node):
         self.joy_linear_vel = 0.
         self.joy_angular_vel = 0.
 
+        self.ctrl_update = False
 
 
     def foc_callback(self, msg):
@@ -119,6 +121,9 @@ class RosTopicManager(Node):
 
     def get_joy_vel(self):
         return self.joy_linear_vel, -self.joy_angular_vel
+    
+    def ctrl_callback(self):
+        self.ctrl_update = True
 
 class robotController():
     def __init__(self) -> None:
@@ -133,7 +138,7 @@ class robotController():
                                                   urdf=URDF_PATH, 
                                                   wheel_r=WHEEL_RADIUS, 
                                                   M=WHEEL_MASS, Q=Q, R=R, 
-                                                  delta_t=1/500, 
+                                                  delta_t=1/400, 
                                                   show_animation=False)
         self.ros_manager = RosTopicManager()
         self.ros_manager_thread = threading.Thread(target=rclpy.spin, args=(self.ros_manager,), daemon=True)
@@ -193,49 +198,56 @@ class robotController():
         start_time = time.time()
 
         while self.running_flag:
-            t1 = time.time()
-            dt = t1 - t0
-            t0 = t1
-            X_ref[2, 0], yaw_ref = self.ros_manager.get_joy_vel()
-            X_ref[2, 0] += MID_ANGLE
-            X_last = np.copy(X)
-            foc_status_left, foc_status_right = self.ros_manager.get_foc_status()
-            # get motor data
-            X[1, 0] = (foc_status_left.speed + foc_status_right.speed) / 2 * (2*np.pi*WHEEL_RADIUS)/60
-            X[0, 0] = X_last[0, 0] + X[1, 0] * dt * WHEEL_RADIUS     # wheel radius 0.08m
-            # get IMU data
-            X[2, 0], X[3, 0] = self.ros_manager.get_orientation()
-            # X[2, 0], _ = self.ros_manager.get_orientation()
-            # X[3, 0] = (X[2, 0] - X_last[2, 0]) / dt
-            if abs(X[2, 0]) > math.radians(15):     # constrain
-                # U[0, 0] = 0.0
-                self.ros_manager.send_foc_command(0.0, 0.0)
-                continue
-            
-            # get u from lqr
-            U = np.copy(self.lqr_controller.lqr_control(X, X_ref))
-            # print(X)
-            # print('u:', U[0, 0])
-            # print('freq:', 1/dt)
-            # time.sleep(3e-3)
-            # print(X)
-            # print(X_desire[2,0])
-            yaw_speed = self.get_yaw_speed(foc_status_left.speed, foc_status_right.speed)
-            yaw_torque = self.turning_pid.update(yaw_ref, yaw_speed, dt)
+            if self.ros_manager.ctrl_update:
+                # print(self.ros_manager.imu_update)
+                self.ros_manager.ctrl_update = False
+                # print('imu false')
+                t1 = time.time()
+                dt = t1 - t0
+                # print('freq:', 1/dt)
+                t0 = t1
+                X_ref[2, 0], yaw_ref = self.ros_manager.get_joy_vel()
+                X_ref[2, 0] += MID_ANGLE
+                X_last = np.copy(X)
+                foc_status_left, foc_status_right = self.ros_manager.get_foc_status()
+                # get motor data
+                X[1, 0] = (foc_status_left.speed + foc_status_right.speed) / 2 * (2*np.pi*WHEEL_RADIUS)/60
+                X[0, 0] = X_last[0, 0] + X[1, 0] * dt * WHEEL_RADIUS     # wheel radius 0.08m
+                # get IMU data
+                X[2, 0], X[3, 0] = self.ros_manager.get_orientation()
+                # X[2, 0], _ = self.ros_manager.get_orientation()
+                # X[3, 0] = (X[2, 0] - X_last[2, 0]) / dt
+                if abs(X[2, 0]) > math.radians(15):     # constrain
+                    # U[0, 0] = 0.0
+                    self.ros_manager.send_foc_command(0.0, 0.0)
+                    continue
+                
+                # get u from lqr
+                U = np.copy(self.lqr_controller.lqr_control(X, X_ref))
+                # print(X)
+                # print('u:', U[0, 0])
+                
+                # time.sleep(3e-3)
+                # print(X)
+                # print(X_desire[2,0])
+                yaw_speed = self.get_yaw_speed(foc_status_left.speed, foc_status_right.speed)
+                yaw_torque = self.turning_pid.update(yaw_ref, yaw_speed, dt)
 
-            if (time.time()-start_time) < 3:
-                yaw_torque = 0.0
-            motor_command_left = U[0, 0] + yaw_torque
-            motor_command_right = U[0, 0] - yaw_torque
-            # print(yaw_torque)
+                if (time.time()-start_time) < 3:
+                    yaw_torque = 0.0
+                motor_command_left = U[0, 0] + yaw_torque
+                motor_command_right = U[0, 0] - yaw_torque
+                # print(yaw_torque)
 
-            motor_command_left = max(-1.5, min(motor_command_left, 1.5))
-            motor_command_right = max(-1.5, min(motor_command_right, 1.5))
-            print(motor_command_left, motor_command_right)
+                motor_command_left = max(-1.5, min(motor_command_left, 1.5))
+                motor_command_right = max(-1.5, min(motor_command_right, 1.5))
+                # print(motor_command_left, motor_command_right)
 
-            self.ros_manager.send_foc_command(motor_command_left, motor_command_right)
-            
-        # self.ros_manager.send_foc_command(0.0, 0.0)
+                self.ros_manager.send_foc_command(motor_command_left, motor_command_right)
+            # else:
+            #     print('wait')
+            #     pass
+                
 
     def disableController(self):
         self.running_flag = False

@@ -15,6 +15,8 @@ from sensor_msgs.msg import Imu
 
 import unitree_motor_command as um
 
+import pickle
+
 WHEEL_RADIUS = 0.08     # m
 WHEEL_MASS = 0.695  # kg
 WHEEL_DISTANCE = 0.355
@@ -141,8 +143,6 @@ class robotController():
         self.running_flag = False
         self.turning_pid = PID(0.5, 0, 0.0001)
 
-        
-
     def init_unitree_motor(self):
         self.unitree = um.unitree_communication('/dev/unitree-l')
         self.MOTOR1 = self.unitree.createMotor(motor_number = 1,initalposition = 0.669,MAX=8.475,MIN=-5.364)
@@ -184,6 +184,8 @@ class robotController():
 
     def controller(self):
         self.ros_manager.get_logger().info('controller start')
+        X_list = []
+        U_list = []
         X = np.zeros((4, 1))    # X = [x, x_dot, theta, theta_dot]
         U = np.zeros((1, 1))
         t0 = time.time()
@@ -191,6 +193,7 @@ class robotController():
         yaw_ref = 0.
         yaw_speed = 0.
         start_time = time.time()
+        
 
         while self.running_flag:
             t1 = time.time()
@@ -229,11 +232,20 @@ class robotController():
             motor_command_right = U[0, 0] - yaw_torque
             # print(yaw_torque)
 
-            motor_command_left = max(-1.5, min(motor_command_left, 1.5))
-            motor_command_right = max(-1.5, min(motor_command_right, 1.5))
-            print(motor_command_left, motor_command_right)
+            motor_command_left = max(-TORQUE_CONSTRAIN, min(motor_command_left, TORQUE_CONSTRAIN))
+            motor_command_right = max(-TORQUE_CONSTRAIN, min(motor_command_right, TORQUE_CONSTRAIN))
 
             self.ros_manager.send_foc_command(motor_command_left, motor_command_right)
+            print(motor_command_left, motor_command_right)
+            if len(X_list)<=3001:
+                X_list.append(X)
+                U_list.append(U)
+                if len(X_list)==3000:
+                    with open('crazydog_ws/src/lqr_control/lqr_control/log/log.plk', 'wb') as f:
+                        pickle.dump(X_list, f)
+                    print('log save')
+                    X_list.clear()
+            
             
         # self.ros_manager.send_foc_command(0.0, 0.0)
 
