@@ -15,6 +15,8 @@ from sensor_msgs.msg import Imu
 
 import unitree_motor_command as um
 
+import pickle
+
 WHEEL_RADIUS = 0.08     # m
 WHEEL_MASS = 0.695  # kg
 WHEEL_DISTANCE = 0.355
@@ -57,7 +59,7 @@ class RosTopicManager(Node):
         self.foc_command_publisher = self.create_publisher(Float32MultiArray, 'foc_command', 1)
         self.imu_monitor = self.create_publisher(Float32, 'imu_monitor', 1)
         self.tau_monitor = self.create_publisher(Float32, 'tau_monitor', 1)
-        # self.ctrl_timer = self.create_timer(1/500, self.ctrl_callback)
+        self.ctrl_timer = self.create_timer(1/500, self.ctrl_callback)
         self.foc_right = focMotor()
         self.foc_left = focMotor()
         # self.pitch_last = 0
@@ -69,7 +71,7 @@ class RosTopicManager(Node):
         self.joy_linear_vel = 0.
         self.joy_angular_vel = 0.
 
-        self.ctrl_update = threading.Condition()
+        self.ctrl_update = False
 
 
     def foc_callback(self, msg):
@@ -111,8 +113,6 @@ class RosTopicManager(Node):
         # self.pitch_dot = (self.pitch - self.pitch_last) / self.dt
         # self.pitch_last = self.pitch
         # self.pitch_dot = msg.angular_velocity.y
-        with self.ctrl_update:
-            self.ctrl_update.notify()
 
     def get_orientation(self):
         return -self.row, -self.row_dot
@@ -124,8 +124,8 @@ class RosTopicManager(Node):
     def get_joy_vel(self):
         return self.joy_linear_vel, -self.joy_angular_vel
     
-    # def ctrl_callback(self):
-    #     self.ctrl_update = True
+    def ctrl_callback(self):
+        self.ctrl_update = True
 
 class robotController():
     def __init__(self) -> None:
@@ -140,7 +140,7 @@ class robotController():
                                                   urdf=URDF_PATH, 
                                                   wheel_r=WHEEL_RADIUS, 
                                                   M=WHEEL_MASS, Q=Q, R=R, 
-                                                  delta_t=1/300, 
+                                                  delta_t=1/400, 
                                                   show_animation=False)
         self.ros_manager = RosTopicManager()
         self.ros_manager_thread = threading.Thread(target=rclpy.spin, args=(self.ros_manager,), daemon=True)
@@ -199,11 +199,13 @@ class robotController():
         yaw_speed = 0.
         start_time = time.time()
 
+        X_list = []
+        U_list = []
+
         while self.running_flag:
-            with self.ros_manager.ctrl_update:
-                self.ros_manager.ctrl_update.wait()
+            if self.ros_manager.ctrl_update:
                 # print(self.ros_manager.imu_update)
-                # self.ros_manager.ctrl_update = False
+                self.ros_manager.ctrl_update = False
                 # print('imu false')
                 t1 = time.time()
                 dt = t1 - t0
@@ -220,7 +222,7 @@ class robotController():
                 X[2, 0], X[3, 0] = self.ros_manager.get_orientation()
                 # X[2, 0], _ = self.ros_manager.get_orientation()
                 # X[3, 0] = (X[2, 0] - X_last[2, 0]) / dt
-                if abs(X[2, 0]) > math.radians(25):     # constrain
+                if abs(X[2, 0]) > math.radians(15):     # constrain
                     # U[0, 0] = 0.0
                     self.ros_manager.send_foc_command(0.0, 0.0)
                     continue
@@ -247,9 +249,21 @@ class robotController():
                 # print(motor_command_left, motor_command_right)
 
                 self.ros_manager.send_foc_command(motor_command_left, motor_command_right)
-            # else:
-            #     print('wait')
-            #     pass
+
+                if len(X_list)<=4001:
+                    X_list.append(np.copy(X))
+                    U_list.append(np.copy(U))
+                    if len(X_list)==4000:
+                        with open('crazydog_ws/src/lqr_control/lqr_control/log/log_x.plk', 'wb') as f1:
+                            pickle.dump(X_list, f1)
+                        with open('crazydog_ws/src/lqr_control/lqr_control/log/log_u.plk', 'wb') as f2:
+                            pickle.dump(U_list, f2)
+                        print('log save')
+                        # X_list.clear()
+
+            else:
+                print('wait')
+                pass
                 
 
     def disableController(self):
