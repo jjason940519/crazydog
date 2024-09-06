@@ -5,47 +5,10 @@ from scipy import sparse
 from LQR_pin import InvertedPendulumLQR
 import matplotlib.pyplot as plt
 import time
+from biped_robot_dynamics import l, dt, sys_discrete, A_zoh, B_zoh
 
-WHEEL_RADIUS = 0.08     # m
-WHEEL_MASS = 0.695  # kg
-URDF_PATH = "/home/crazydog/crazydog/crazydog_ws/src/mpc_control/mpc_control/robot_models/big bipedal robot v1/urdf/big bipedal robot v1.urdf"
-
-pos = np.array([0., 0., 0., 0., 0., 0., 1.,
-                0., -1.18, 2.0, 1., 0.,
-                0., -1.18, 2.0, 1., 0.])
-lqr_controller = InvertedPendulumLQR(pos=pos, 
-                                    urdf=URDF_PATH, 
-                                    wheel_r=WHEEL_RADIUS, 
-                                    M=WHEEL_MASS, 
-                                    delta_t=1/10, 
-                                    show_animation=False)
-Ad = sparse.csc_matrix(lqr_controller.A.tolist())
-Bd = sparse.csc_matrix(lqr_controller.B.tolist())
-# l_bar = 2.0  # length of bar
-# M = 1.0  # [kg]
-# m = 0.3  # [kg]
-# g = 9.8  # [m/s^2]
-# delta_t = 1/100
-# nx = 4  # number of state
-# nu = 1  # number of input
-# A = np.array([
-#         [0.0, 1.0, 0.0, 0.0],
-#         [0.0, 0.0, m * g / M, 0.0],
-#         [0.0, 0.0, 0.0, 1.0],
-#         [0.0, 0.0, g * (M + m) / (l_bar * M), 0.0]
-#     ])
-# A = np.eye(nx) + delta_t * A
-
-# B = np.array([
-#     [0.0],
-#     [1.0 / M],
-#     [0.0],
-#     [1.0 / (l_bar * M)]
-# ])
-# B = delta_t * B
-# Ad = sparse.csc_matrix(lqr_controller.A.tolist())
-# Bd = sparse.csc_matrix(lqr_controller.B.tolist())
-
+Ad = sparse.csc_matrix(A_zoh.tolist())
+Bd = sparse.csc_matrix(B_zoh.tolist())
 
 [nx, nu] = Bd.shape
 
@@ -57,16 +20,16 @@ xmin = np.array([-np.inf,-np.inf,-np.inf,-np.inf])
 xmax = np.array([np.inf, np.inf, np.inf, np.inf])
 
 # Objective function
-Q = sparse.diags([0., 1.0, 100.0, 0.005])
+Q = sparse.diags([10., 5., 100., 5.])
 QN = Q
-R = 0.001*sparse.eye(1)
+R = 0.1*sparse.eye(1)
 
 # Initial and reference states
 x0 = np.array([0., 0., 0.2, 0.])
 xr = np.array([0., 0., 0., 0.])
 
 # Prediction horizon
-N = 20
+N = 10
 
 # Cast MPC problem to a QP: x = (x(0),x(1),...,x(N),u(0),...,u(N-1))
 # - quadratic objective
@@ -96,7 +59,7 @@ prob = osqp.OSQP()
 prob.setup(P, q, A, l, u)
 
 # Simulate in closed loop
-nsim = 10
+nsim = 100
 x01_values = []
 x02_values = []
 x03_values = []
@@ -124,9 +87,9 @@ for i in range(nsim):
     print('X', x0)
     print('u', ctrl)
 
-    t1 = time.time()
-    print('freq', 1/(t1-t0))
-    t0 = t1
+    # t1 = time.time()
+    # print('freq', 1/(t1-t0))
+    # t0 = t1
 
 
     # Store values for plotting

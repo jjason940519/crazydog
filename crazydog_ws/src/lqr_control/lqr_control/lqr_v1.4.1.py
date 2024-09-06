@@ -147,37 +147,7 @@ class robotController():
         self.ros_manager_thread.start()
         self.running_flag = False
         self.turning_pid = PID(0.5, 0, 0.0001)
-
         
-
-    def init_unitree_motor(self):
-        self.unitree = um.unitree_communication('/dev/unitree-l')
-        self.MOTOR1 = self.unitree.createMotor(motor_number = 1,initalposition = 0.669,MAX=8.475,MIN=-5.364)
-        self.MOTOR2 = self.unitree.createMotor(motor_number = 2,initalposition = 3.815,MAX=26.801,MIN=-1)
-        self.unitree2 = um.unitree_communication('/dev/unitree-r')
-        self.MOTOR4 = self.unitree2.createMotor(motor_number = 4,initalposition = 1.247,MAX=5.364,MIN=-8.475)
-        self.MOTOR5 = self.unitree2.createMotor(motor_number = 5,initalposition = 5.046,MAX=1,MIN=-26.801)    
-        self.unitree.inital_all_motor()
-        self.unitree2.inital_all_motor()
-
-    def locklegs(self):
-        while self.MOTOR1.data.q >= self.MOTOR1.inital_position_cheak_point + 0.33*6.33 and self.MOTOR4.data.q  <= self.MOTOR4.inital_position_cheak_point -0.33*6.33  :
-            self.unitree.position_force_velocity_cmd(motor_number = 1,kp = 0,kd = 0.1, position = 0 ,torque = 0, velocity = 0.01)
-            self.unitree2.position_force_velocity_cmd(motor_number = 4 ,kp = 0,kd = 0.1, position = 0 ,torque = 0, velocity=-0.01)
-        time.sleep(0.01)
-        for i in range(36):                        
-            self.unitree.position_force_velocity_cmd(motor_number = 1,kp = i,kd = 0.12, position = self.MOTOR1.inital_position_cheak_point + 0.33*6.33)
-            self.unitree2.position_force_velocity_cmd(motor_number = 4 ,kp = i,kd = 0.12, position = self.MOTOR4.inital_position_cheak_point - 0.33*6.33)
-            time.sleep(0.1)
-        while self.MOTOR2.data.q >= self.MOTOR2.inital_position_cheak_point + 0.33*6.33*1.6 and self.MOTOR5.data.q  <= self.MOTOR5.inital_position_cheak_point - 0.33*6.33*1.6:
-            self.unitree.position_force_velocity_cmd(motor_number = 2,kp = 0,kd = 0.16, position = 0 ,torque = 0, velocity = 0.01)
-            self.unitree2.position_force_velocity_cmd(motor_number = 5 ,kp = 0,kd = 0.16, position = 0 ,torque = 0, velocity=-0.01)
-        time.sleep(0.01)
-        for i in range(36):                        
-            self.unitree.position_force_velocity_cmd(motor_number = 2,kp = i,kd = 0.15, position = self.MOTOR2.inital_position_cheak_point + 0.6*6.33*1.6)
-            self.unitree2.position_force_velocity_cmd(motor_number = 5 ,kp = i,kd = 0.15, position = self.MOTOR5.inital_position_cheak_point - 0.6*6.33*1.6)
-            time.sleep(0.1)
-
     def startController(self):
         self.prev_pitch = 0
         self.lqr_thread = threading.Thread(target=self.controller)

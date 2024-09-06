@@ -8,7 +8,7 @@ from LQR_pin import InvertedPendulumLQR
 WHEEL_RADIUS = 0.08     # m
 WHEEL_MASS = 0.695  # kg
 URDF_PATH = "/home/crazydog/crazydog/crazydog_ws/src/mpc_control/mpc_control/robot_models/big bipedal robot v1/urdf/big bipedal robot v1.urdf"
-dt = 1/100
+dt = 1/10
 pos = np.array([0., 0., 0., 0., 0., 0., 1.,
                 0., -1.18, 2.0, 1., 0.,
                 0., -1.18, 2.0, 1., 0.])

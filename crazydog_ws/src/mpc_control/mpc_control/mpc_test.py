@@ -47,7 +47,7 @@ def run_mpc():
 
 [nx, nu] = B_zoh.shape
 
-Q = np.diag([10., 5., 100., 5.])
+Q = np.diag([10., 5., 120., 5.])
 R = np.array([[.1]])
 
 x0 = np.array([0., 0., 0.3, 0.])  # Initial conditions

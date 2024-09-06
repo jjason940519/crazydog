@@ -11,7 +11,7 @@ import sys
 import traceback
 import math
 import numpy as np
-from MPC_pin import InvertedPendulumMPC
+from MPC_pin_v2 import InvertedPendulumMPC
 from sensor_msgs.msg import Imu
 import matplotlib.pyplot as plt
 
@@ -93,8 +93,8 @@ class robotController():
     def __init__(self) -> None:
         rclpy.init()
         # K: [[ 2.97946709e-07  7.36131891e-05 -1.28508761e+01 -4.14185118e-01]]
-        Q = [0.0, 1.0, 10.0, 0.0005]       # 1e-9, 1e-9, 0.01, 1e-6
-        R = [0.001]
+        Q = [10., 5., 110.0, 5.]       # 1e-9, 1e-9, 0.01, 1e-6
+        R = [1.]
         q = np.array([0., 0., 0., 0., 0., 0., 1.,
                             0., -1.18, 2.0, 1., 0.,
                             0., -1.18, 2.0, 1., 0.])
@@ -102,42 +102,12 @@ class robotController():
                                                   urdf=URDF_PATH, 
                                                   wheel_r=WHEEL_RADIUS, 
                                                   M=WHEEL_MASS, Q=Q, R=R, 
-                                                  delta_t=1/100, 
+                                                  delta_t=1/10, 
                                                   show_animation=False)
         self.ros_manager = RosTopicManager()
         self.ros_manager_thread = threading.Thread(target=rclpy.spin, args=(self.ros_manager,), daemon=True)
         self.ros_manager_thread.start()
         self.running_flag = False
-
-        
-
-    def init_unitree_motor(self):
-        self.unitree = um.unitree_communication('/dev/unitree-l')
-        self.MOTOR1 = self.unitree.createMotor(motor_number = 1,initalposition = 0.669,MAX=8.475,MIN=-5.364)
-        self.MOTOR2 = self.unitree.createMotor(motor_number = 2,initalposition = 3.815,MAX=26.801,MIN=-1)
-        self.unitree2 = um.unitree_communication('/dev/unitree-r')
-        self.MOTOR4 = self.unitree2.createMotor(motor_number = 4,initalposition = 1.247,MAX=5.364,MIN=-8.475)
-        self.MOTOR5 = self.unitree2.createMotor(motor_number = 5,initalposition = 5.046,MAX=1,MIN=-26.801)    
-        self.unitree.inital_all_motor()
-        self.unitree2.inital_all_motor()
-
-    def locklegs(self):
-        while self.MOTOR1.data.q >= self.MOTOR1.inital_position + 0.33*6.33 and self.MOTOR4.data.q  <= self.MOTOR4.inital_position  :
-            self.unitree.position_force_velocity_cmd(motor_number = 1,kp = 0,kd = 0.1, position = 0 ,torque = 0, velocity = 0.01)
-            self.unitree2.position_force_velocity_cmd(motor_number = 4 ,kp = 0,kd = 0.1, position = 0 ,torque = 0, velocity=-0.01)
-        time.sleep(0.01)
-        for i in range(36):                        
-            self.unitree.position_force_velocity_cmd(motor_number = 1,kp = i,kd = 0.12, position = self.MOTOR1.inital_position + 0.33*6.33)
-            self.unitree2.position_force_velocity_cmd(motor_number = 4 ,kp = i,kd = 0.12, position = self.MOTOR4.inital_position - 0.33*6.33)
-            time.sleep(0.1)
-        while self.MOTOR2.data.q >= self.MOTOR2.inital_position + 0.33*6.33*1.6 and self.MOTOR5.data.q  <= self.MOTOR5.inital_position - 0.33*6.33*1.6:
-            self.unitree.position_force_velocity_cmd(motor_number = 2,kp = 0,kd = 0.16, position = 0 ,torque = 0, velocity = 0.01)
-            self.unitree2.position_force_velocity_cmd(motor_number = 5 ,kp = 0,kd = 0.16, position = 0 ,torque = 0, velocity=-0.01)
-        time.sleep(0.01)
-        for i in range(36):                        
-            self.unitree.position_force_velocity_cmd(motor_number = 2,kp = i,kd = 0.15, position = self.MOTOR2.inital_position + 0.6*6.33*1.6)
-            self.unitree2.position_force_velocity_cmd(motor_number = 5 ,kp = i,kd = 0.15, position = self.MOTOR5.inital_position - 0.6*6.33*1.6)
-            time.sleep(0.1)
 
     def startController(self):
         self.prev_pitch = 0
@@ -209,8 +179,8 @@ def main(args=None):
     robot = robotController()
     command_dict = {
         "d": robot.disableUnitreeMotor,
-        "i": robot.init_unitree_motor,
-        'l': robot.locklegs,
+        # "i": robot.init_unitree_motor,
+        # 'l': robot.locklegs,
         "start": robot.startController,
         # "get": robot_motor.getControllerPIDParam,
         # "clear": robot_motor.mc.cleanerror,
