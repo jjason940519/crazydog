@@ -28,6 +28,7 @@ setup(
             'foc_data_pub = robot_interfaces.foc_data_pub:main',
             'imu_data_pub = robot_interfaces.imu_data_pub:main',
             'joy_controller = robot_interfaces.joy_controller:main',
+            'unitree_test = robot_interfaces.unitree_motor_command_thread_ros:main',
         ],
     },
 )
