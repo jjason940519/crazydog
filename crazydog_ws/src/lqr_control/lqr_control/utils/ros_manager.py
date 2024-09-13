@@ -7,6 +7,7 @@ import math
 from sensor_msgs.msg import Imu
 
 import unitree_motor_command as um
+from unitree_msgs.msg import LowCommand, LowState, MotorCommand, MotorState
 
 class RosTopicManager(Node):
     def __init__(self):
@@ -31,6 +32,16 @@ class RosTopicManager(Node):
 
         self.ctrl_condition = threading.Condition()
 
+        self.unitree_command_sub = self.create_subscription(
+                LowState,
+                'unitree_status',
+                self.status_callback,
+                1)
+        self.motor_states = LowState()
+        self.motor_cmd_pub = self.create_publisher(LowCommand, 'unitree_command', 1)
+
+    def status_callback(self, msg_list):
+        self.motor_states = msg_list.motor_state
 
     def foc_callback(self, msg):
         if msg.data[0] == 513.:   # motor left

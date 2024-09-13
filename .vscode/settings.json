@@ -1,3 +1,4 @@
 {
-    "ros.distro": "humble"
+    "ros.distro": "humble",
+    "cmake.sourceDirectory": "/home/crazydog/crazydog/crazydog_ws/src/lqr_control/lqr_control/unitree_actuator_sdk/thirdparty/pybind11/tests/test_cmake_build/installed_function"
 }

@@ -6,8 +6,8 @@ import numpy as np
 from utils.LQR_pin import InvertedPendulumLQR
 from utils.pid import PID
 from utils.ros_manager import RosTopicManager
-from utils.motor_getready import disableUnitreeMotor, init_unitree_motor, locklegs, enable
-
+# from utils.motor_getready import disableUnitreeMotor, init_unitree_motor, locklegs, enable
+from unitree_msgs.msg import LowCommand, LowState, MotorCommand, MotorState
 import unitree_motor_command as um
 
 WHEEL_RADIUS = 0.08     # m
@@ -16,6 +16,7 @@ WHEEL_DISTANCE = 0.355
 URDF_PATH = "/home/crazydog/crazydog/crazydog_ws/src/lqr_control/lqr_control/robot_models/big bipedal robot v1/urdf/big bipedal robot v1.urdf"
 MID_ANGLE = 0.05
 TORQUE_CONSTRAIN = 1.5
+MOTOR_INIT_POS = [None, 0.669, 3.815, None, 1.247+2*math.pi, 2.970]     # for unitree motors
 
 class robotController():
     def __init__(self) -> None:
@@ -26,17 +27,84 @@ class robotController():
         q = np.array([0., 0., 0., 0., 0., 0., 1.,
                             0., -1.18, 2.0, 1., 0.,
                             0., -1.18, 2.0, 1., 0.])
+        self.lqr_thread = None
         self.lqr_controller = InvertedPendulumLQR(pos=q, 
                                                   urdf=URDF_PATH, 
                                                   wheel_r=WHEEL_RADIUS, 
                                                   M=WHEEL_MASS, Q=Q, R=R, 
                                                   delta_t=1/300, 
                                                   show_animation=False)
+    def enable_ros_manager(self):
         self.ros_manager = RosTopicManager()
         self.ros_manager_thread = threading.Thread(target=rclpy.spin, args=(self.ros_manager,), daemon=True)
         self.ros_manager_thread.start()
         self.running_flag = False
         self.turning_pid = PID(0.5, 0, 0.0001)
+        self.cmd_list = LowCommand()
+        time.sleep(2)
+
+    def check_constrain(self, motor_id):
+        if motor_id==1 or motor_id==2:
+            if self.ros_manager.motor_states[motor_id].q >= MOTOR_INIT_POS[motor_id]:
+                return True
+            else: 
+                return False
+        elif motor_id==4 or motor_id==5:
+            if self.ros_manager.motor_states[motor_id].q <= MOTOR_INIT_POS[motor_id]:
+                return True
+            else: 
+                return False    
+            
+    def set_motor_cmd(self, motor_number, kp, kd, position, torque=0, velocity=0):
+        cmd = MotorCommand()
+        cmd.q = float(position)
+        cmd.dq = float(velocity)
+        cmd.tau = float(torque)
+        cmd.kp = float(kp)
+        cmd.kd = float(kd)
+        self.cmd_list.motor_cmd[motor_number] = cmd
+
+    def init_unitree_motor(self):
+        if self.check_constrain(1) and self.check_constrain(4):
+            while self.check_constrain(1) and self.check_constrain(4):
+                self.set_motor_cmd(motor_number=1, kp=2, kd=0.02, position=self.ros_manager.motor_states[1].q-0.1, torque=0, velocity=0)
+                self.set_motor_cmd(motor_number=4, kp=2, kd=0.02, position=self.ros_manager.motor_states[4].q+0.1, torque=0, velocity=0)
+                self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
+                time.sleep(0.01)
+            time.sleep(0.1)
+            self.set_motor_cmd(motor_number=1, kp=6., kd=0.1, position=self.ros_manager.motor_states[1].q, torque=0, velocity=0)
+            self.set_motor_cmd(motor_number=2, kp=6., kd=0.1, position=self.ros_manager.motor_states[2].q, torque=0, velocity=0)
+            self.set_motor_cmd(motor_number=4, kp=6., kd=0.1, position=self.ros_manager.motor_states[4].q, torque=0, velocity=0)
+            self.set_motor_cmd(motor_number=5, kp=6., kd=0.1, position=self.ros_manager.motor_states[5].q, torque=0, velocity=0)
+            self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
+            # unitree.inital_check()
+            # unitree2.inital_check()
+        else:
+            print("inital fail")
+
+    def locklegs(self):
+        while self.ros_manager.motor_states[1].q <= MOTOR_INIT_POS[1]+0.33*6.33 and self.ros_manager.motor_states[4].q >= MOTOR_INIT_POS[4]-0.33*6.33:            
+            self.set_motor_cmd(motor_number=1, kp=2, kd=0.02, position=self.ros_manager.motor_states[1].q+0.1, torque=0, velocity=0)
+            self.set_motor_cmd(motor_number=4, kp=2, kd=0.02, position=self.ros_manager.motor_states[4].q-0.1, torque=0, velocity=0)
+            self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
+            time.sleep(0.01)
+        for i in range(36):                        
+            self.set_motor_cmd(motor_number=1, kp=i, kd=0.12, position=MOTOR_INIT_POS[1]+0.33*6.33)
+            self.set_motor_cmd(motor_number=4, kp=i, kd=0.12, position=MOTOR_INIT_POS[4]-0.33*6.33)
+            self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
+            time.sleep(0.01)
+        while self.ros_manager.motor_states[2].q <= MOTOR_INIT_POS[2]+0.6*6.33*1.6 and self.ros_manager.motor_states[5].q >= MOTOR_INIT_POS[5]-0.6*6.33*1.6:
+            # self.set_motor_cmd(motor_number=2, kp=0, kd=0.16, position=0, torque=0, velocity=0.01)
+            # self.set_motor_cmd(motor_number=5 ,kp=0, kd=0.16, position=0, torque=0, velocity=-0.01)
+            self.set_motor_cmd(motor_number=2, kp=25, kd=0.02, position=self.ros_manager.motor_states[2].q+0.05, torque=0, velocity=0)
+            self.set_motor_cmd(motor_number=5, kp=25, kd=0.02, position=self.ros_manager.motor_states[5].q-0.05, torque=0, velocity=0)
+            self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
+        for i in range(36):                        
+            self.set_motor_cmd(motor_number=2, kp=i, kd=0.15, position=MOTOR_INIT_POS[2]+0.6*6.33*1.6)
+            self.set_motor_cmd(motor_number=5, kp=i, kd=0.15, position=MOTOR_INIT_POS[5]-0.6*6.33*1.6)
+            self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
+            time.sleep(0.01)
+
 
     def startController(self):
         self.prev_pitch = 0
@@ -114,6 +182,12 @@ class robotController():
         self.ros_manager.send_foc_command(0.0, 0.0)
         if self.lqr_thread is not None:
             self.lqr_thread.join()
+            print('lqr_joined')
+        self.set_motor_cmd(motor_number=1, kp=0., kd=0, position=0, torque=0, velocity=0)
+        self.set_motor_cmd(motor_number=2, kp=0., kd=0, position=0, torque=0, velocity=0)
+        self.set_motor_cmd(motor_number=4, kp=0., kd=0, position=0, torque=0, velocity=0)
+        self.set_motor_cmd(motor_number=5, kp=0., kd=0, position=0, torque=0, velocity=0)
+        self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
         self.ros_manager.get_logger().info("disable controller")
     
 
@@ -123,10 +197,10 @@ def main(args=None):
     robot = robotController()
     command_dict = {
         "start": robot.startController,
-        "d": disableUnitreeMotor,
-        "i": init_unitree_motor,
-        "l": locklegs,
-        "s": enable,
+        "d": robot.disableController,
+        "i": robot.init_unitree_motor,
+        "l": robot.locklegs,
+        "e": robot.enable_ros_manager,
     }
 
     while True:
@@ -136,9 +210,12 @@ def main(args=None):
                 command_dict[cmd]()
             elif cmd == "exit":
                 robot.disableController()
+                rclpy.shutdown()
                 break
         except KeyboardInterrupt:
             robot.disableController()
+            robot.ros_manager_thread.join()
+            rclpy.shutdown()
             break
         # except Exception as e:
         #     traceback.print_exc()

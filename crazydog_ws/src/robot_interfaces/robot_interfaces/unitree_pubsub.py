@@ -1,10 +1,9 @@
 import time
 import math
 import sys
-import matplotlib.pyplot as plt
-sys.path.append('/home/crazydog/crazydog/crazydog_ws/src/lqr_control/lqr_control/unitree_actuator_sdk/lib')
+sys.path.append('/home/crazydog/crazydog/crazydog_ws/src/robot_interfaces/robot_interfaces/unitree_actuator_sdk/lib')
 sys.path.append('..')
-sys.path.append('/home/crazydog/crazydog/crazydog_ws/src/lqr_control/lqr_control')
+# sys.path.append('/home/crazydog/crazydog/crazydog_ws/src/lqr_control/lqr_control')
 from unitree_actuator_sdk import * # type: ignorei
 import threading
 
@@ -152,7 +151,7 @@ class unitree_motor(object):
 class UnitreeInterface(Node):
 
     def __init__(self):
-        super().__init__('unitree_interface')
+        super().__init__('unitree_pubsub')
 
         self.unitree = unitree_communication('/dev/unitree-l')
         MOTOR1 = self.unitree.createMotor(motor_number = 1,initalposition = MOTOR_INIT_POS[1],MAX=8.475,MIN=-5.364)
