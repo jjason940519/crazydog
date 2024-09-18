@@ -17,13 +17,17 @@ URDF_PATH = "/home/crazydog/crazydog/crazydog_ws/src/lqr_control/lqr_control/rob
 MID_ANGLE = 0.045
 TORQUE_CONSTRAIN = 1.5
 MOTOR_INIT_POS = [None, 0.669, 3.815, None, 1.247+2*math.pi, 2.970]     # for unitree motors
+INIT_ANGLE = [-2.42, 2.6]
+LOCK_POS = [None, 2.76, 9.88, None, 5.44, -3.10]    # -2.75, 2.0
+THIGH_LENGTH = 0.215
+CALF_LENGTH = 0.215
 
 class robotController():
     def __init__(self) -> None:
         rclpy.init()
         # K: [[ 2.97946709e-07  7.36131891e-05 -1.28508761e+01 -4.14185118e-01]]
-        Q = np.diag([0., 10., 100., 0.1])       # 1e-9, 0.1, 1.0, 1e-4
-        R = np.diag(np.diag([2.]))
+        Q = np.diag([1e-9, 0.1, 1.0, 1e-4])       # 1e-9, 0.1, 1.0, 1e-4
+        R = np.diag(np.diag([0.02]))
         q = np.array([0., 0., 0., 0., 0., 0., 1.,
                             0., -1.18, 2.0, 1., 0.,
                             0., -1.18, 2.0, 1., 0.])
@@ -34,6 +38,7 @@ class robotController():
                                                   M=WHEEL_MASS, Q=Q, R=R, 
                                                   delta_t=1/300, 
                                                   show_animation=False)
+
     def enable_ros_manager(self):
         self.ros_manager = RosTopicManager()
         self.ros_manager_thread = threading.Thread(target=rclpy.spin, args=(self.ros_manager,), daemon=True)
@@ -43,7 +48,7 @@ class robotController():
         self.cmd_list = LowCommand()
         time.sleep(2)
 
-    def check_constrain(self, motor_id):
+    def check_target_pos(self, motor_id):
         if motor_id==1 or motor_id==2:
             if self.ros_manager.motor_states[motor_id].q >= MOTOR_INIT_POS[motor_id]:
                 return True
@@ -65,8 +70,8 @@ class robotController():
         self.cmd_list.motor_cmd[motor_number] = cmd
 
     def init_unitree_motor(self):
-        if self.check_constrain(1) and self.check_constrain(4):
-            while self.check_constrain(1) and self.check_constrain(4):
+        if self.check_target_pos(1) and self.check_target_pos(4):
+            while self.check_target_pos(1) and self.check_target_pos(4):
                 self.set_motor_cmd(motor_number=1, kp=2, kd=0.02, position=self.ros_manager.motor_states[1].q-0.1, torque=0, velocity=0)
                 self.set_motor_cmd(motor_number=4, kp=2, kd=0.02, position=self.ros_manager.motor_states[4].q+0.1, torque=0, velocity=0)
                 self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
@@ -83,29 +88,58 @@ class robotController():
             print("inital fail")
 
     def locklegs(self):
-        while self.ros_manager.motor_states[1].q <= MOTOR_INIT_POS[1]+0.33*6.33 and self.ros_manager.motor_states[4].q >= MOTOR_INIT_POS[4]-0.33*6.33:            
-            # self.set_motor_cmd(motor_number=1, kp=2, kd=0.02, position=self.ros_manager.motor_states[1].q+0.1, torque=0, velocity=0)
-            # self.set_motor_cmd(motor_number=4, kp=2, kd=0.02, position=self.ros_manager.motor_states[4].q-0.1, torque=0, velocity=0)
-            self.set_motor_cmd(motor_number=1, kp=0, kd=0, position=0, torque=0.05, velocity=0)
-            self.set_motor_cmd(motor_number=4, kp=0, kd=0, position=0, torque=-0.05, velocity=0)
+        theta1_err, theta2_err = self.get_angle_error(self.ros_manager.wheel_coordinate)     # lock legs coordinate [x, y] (hip joint coordinate (0.0742, 0))
+        while self.ros_manager.motor_states[1].q <= MOTOR_INIT_POS[1]-theta1_err*6.33 and self.ros_manager.motor_states[4].q >= MOTOR_INIT_POS[4]+theta1_err*6.33:            
+            self.set_motor_cmd(motor_number=1, kp=2, kd=0.02, position=self.ros_manager.motor_states[1].q+0.1, torque=0, velocity=0)
+            self.set_motor_cmd(motor_number=4, kp=2, kd=0.02, position=self.ros_manager.motor_states[4].q-0.1, torque=0, velocity=0)
+            # self.set_motor_cmd(motor_number=1, kp=0, kd=0, position=0, torque=0.05, velocity=0)
+            # self.set_motor_cmd(motor_number=4, kp=0, kd=0, position=0, torque=-0.05, velocity=0)
             self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
             time.sleep(0.01)
         for i in range(36):                        
-            self.set_motor_cmd(motor_number=1, kp=i, kd=0.12, position=MOTOR_INIT_POS[1]+0.33*6.33)
-            self.set_motor_cmd(motor_number=4, kp=i, kd=0.12, position=MOTOR_INIT_POS[4]-0.33*6.33)
+            self.set_motor_cmd(motor_number=1, kp=i, kd=0.12, position=MOTOR_INIT_POS[1]-theta1_err*6.33)
+            self.set_motor_cmd(motor_number=4, kp=i, kd=0.12, position=MOTOR_INIT_POS[4]+theta1_err*6.33)
             self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
             time.sleep(0.01)
-        while self.ros_manager.motor_states[2].q <= MOTOR_INIT_POS[2]+0.6*6.33*1.6 and self.ros_manager.motor_states[5].q >= MOTOR_INIT_POS[5]-0.6*6.33*1.6:
+        while self.ros_manager.motor_states[2].q <= MOTOR_INIT_POS[2]-theta2_err*6.33*1.6 and self.ros_manager.motor_states[5].q >= MOTOR_INIT_POS[5]+theta2_err*6.33*1.6:
             # self.set_motor_cmd(motor_number=2, kp=0, kd=0.16, position=0, torque=0, velocity=0.01)
             # self.set_motor_cmd(motor_number=5 ,kp=0, kd=0.16, position=0, torque=0, velocity=-0.01)
             self.set_motor_cmd(motor_number=2, kp=25, kd=0.02, position=self.ros_manager.motor_states[2].q+0.05, torque=0, velocity=0)
             self.set_motor_cmd(motor_number=5, kp=25, kd=0.02, position=self.ros_manager.motor_states[5].q-0.05, torque=0, velocity=0)
             self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
         for i in range(36):                        
-            self.set_motor_cmd(motor_number=2, kp=i, kd=0.15, position=MOTOR_INIT_POS[2]+0.6*6.33*1.6)
-            self.set_motor_cmd(motor_number=5, kp=i, kd=0.15, position=MOTOR_INIT_POS[5]-0.6*6.33*1.6)
+            self.set_motor_cmd(motor_number=2, kp=i, kd=0.15, position=MOTOR_INIT_POS[2]-theta2_err*6.33*1.6)
+            self.set_motor_cmd(motor_number=5, kp=i, kd=0.15, position=MOTOR_INIT_POS[5]+theta2_err*6.33*1.6)
             self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
             time.sleep(0.01)
+    
+    def check_pose(self):
+        theta1_err, theta2_err = self.get_angle_error(self.ros_manager.wheel_coordinate)
+        self.set_motor_cmd(motor_number=1, kp=36, kd=0.12, position=MOTOR_INIT_POS[1]-theta1_err*6.33)
+        self.set_motor_cmd(motor_number=4, kp=36, kd=0.12, position=MOTOR_INIT_POS[4]+theta1_err*6.33)
+        self.set_motor_cmd(motor_number=2, kp=36, kd=0.12, position=MOTOR_INIT_POS[2]-theta2_err*6.33*1.6)
+        self.set_motor_cmd(motor_number=5, kp=36, kd=0.12, position=MOTOR_INIT_POS[5]+theta2_err*6.33*1.6)
+        self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
+
+    def inverse_kinematics(self, x, y, L1=THIGH_LENGTH, L2=CALF_LENGTH):
+        # 計算 d    
+        d = np.sqrt(x**2 + y**2)
+        # 計算 theta2
+        cos_theta2 = (x**2 + y**2 - L1**2 - L2**2) / (2 * L1 * L2)
+        theta2 = np.arccos(cos_theta2)
+        
+        # 計算 theta1
+        theta1 = np.arctan2(y, x) - np.arctan2(L2 * np.sin(theta2), L1 + L2 * np.cos(theta2))
+    
+        return theta1, theta2
+    
+    def get_angle_error(self, axis):
+        theta1, theta2 = self.inverse_kinematics(axis[0], axis[1])
+        theta1_err = theta1 - INIT_ANGLE[0]
+        theta2_err = theta2 - INIT_ANGLE[1]
+        # print(f'theta1_err:{theta1_err}, theta2_err{theta2_err}')
+        return theta1_err, theta2_err
+        # print(f'theta1_err:{theta1_err}, theta2_err{theta2_err}')
 
 
     def startController(self):
@@ -173,11 +207,13 @@ class robotController():
                 motor_command_right = U[0, 0] - yaw_torque
                 # print(yaw_torque)
 
-                motor_command_left = max(-2.5, min(motor_command_left, 2.5))
-                motor_command_right = max(-2.5, min(motor_command_right, 2.5))
+                motor_command_left = max(-1.5, min(motor_command_left, 1.5))
+                motor_command_right = max(-1.5, min(motor_command_right, 1.5))
                 # print(motor_command_left, motor_command_right)
 
                 self.ros_manager.send_foc_command(motor_command_left, motor_command_right)
+
+                self.check_pose()
 
 
     def disableController(self):

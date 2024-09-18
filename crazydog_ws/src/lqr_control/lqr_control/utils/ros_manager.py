@@ -5,7 +5,7 @@ from geometry_msgs.msg import Twist
 import threading
 import math
 from sensor_msgs.msg import Imu
-
+from std_msgs.msg import String
 import unitree_motor_command as um
 from unitree_msgs.msg import LowCommand, LowState, MotorCommand, MotorState
 
@@ -15,6 +15,7 @@ class RosTopicManager(Node):
         self.foc_data_subscriber = self.create_subscription(Float32MultiArray,'foc_msg', self.foc_callback, 1)
         self.imu_subscriber = self.create_subscription(Imu,'handsfree/imu', self.imu_callback, 1)
         self.vel_subscriber = self.create_subscription(Twist,'cmd_vel', self.vel_callback, 1)
+        self.vel_subscriber = self.create_subscription(String,'body_pose', self.body_pose_callback, 1)
         self.foc_command_publisher = self.create_publisher(Float32MultiArray, 'foc_command', 1)
         self.imu_monitor = self.create_publisher(Float32, 'imu_monitor', 1)
         self.tau_monitor = self.create_publisher(Float32, 'tau_monitor', 1)
@@ -30,6 +31,8 @@ class RosTopicManager(Node):
         self.joy_linear_vel = 0.
         self.joy_angular_vel = 0.
 
+        self.wheel_coordinate = [0.033-0.0742, -0.2285]  # lock legs coordinate [x, y] (hip joint coordinate (0.0742, 0))
+
         self.ctrl_condition = threading.Condition()
 
         self.unitree_command_sub = self.create_subscription(
@@ -39,6 +42,16 @@ class RosTopicManager(Node):
                 1)
         self.motor_states = LowState()
         self.motor_cmd_pub = self.create_publisher(LowCommand, 'unitree_command', 1)
+
+    def body_pose_callback(self, msg):
+        if msg.data == "up":
+            self.wheel_coordinate[1] -= 0.0005
+        elif msg.data == "down":
+            self.wheel_coordinate[1] += 0.0005
+        elif msg.data == "left":
+            self.wheel_coordinate[0] += 0.0005
+        elif msg.data == "right":
+            self.wheel_coordinate[0] -= 0.0005
 
     def status_callback(self, msg_list):
         self.motor_states = msg_list.motor_state

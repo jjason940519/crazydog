@@ -56,12 +56,14 @@
       <origin
         xyz="0.050012 -8.4172E-05 -0.00066363"
         rpy="0 0 0" />
-      <massdummy_link
+      <mass
+        value="0.575" />
+      <inertia
         ixx="0.00013072"
-        ixy="3.5551E-07"
-        ixz="3.3093E-06"
+        ixy="3.5562E-07"
+        ixz="-3.3092E-06"
         iyy="0.00015128"
-        iyz="2.3794E-07"
+        iyz="-2.3793E-07"
         izz="0.00024737" />
     </inertial>
     <visual>
