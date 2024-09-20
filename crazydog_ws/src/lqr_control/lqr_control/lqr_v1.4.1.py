@@ -220,10 +220,10 @@ class robotController():
 
                 self.ros_manager.send_foc_command(motor_command_left, motor_command_right)
 
-                if len(X_list)<=4001:
+                if len(X_list)<=3001:
                     X_list.append(np.copy(X))
                     U_list.append(np.copy(U))
-                    if len(X_list)==4000:
+                    if len(X_list)==3000:
                         with open('crazydog_ws/src/lqr_control/lqr_control/log/log_x.plk', 'wb') as f1:
                             pickle.dump(X_list, f1)
                         with open('crazydog_ws/src/lqr_control/lqr_control/log/log_u.plk', 'wb') as f2:

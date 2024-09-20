@@ -17,7 +17,7 @@ class SpotControl(Node):
         self.current_mode = " "
         self.linear_x_scale = 0.1
         self.angular_scale = 1.5
-        feq = 500
+        feq = 300
         self.joy = None
         self.cmd = None
         
@@ -48,18 +48,18 @@ class SpotControl(Node):
         elif(data.buttons[11]==1 and self.current_mode != "start"):
             self.current_mode = "start"
             time.sleep(0.01)
-        elif(data.axes[7]==1 and self.current_mode != "up"):
+        elif(data.axes[7]==1):
             self.current_mode = "up"
-            time.sleep(0.01)
-        elif(data.axes[7]==-1 and self.current_mode != "down"):
+            # time.sleep(0.01)
+        elif(data.axes[7]==-1):
             self.current_mode = "down"
-            time.sleep(0.01)
-        elif(data.axes[6]==1 and self.current_mode != "left"):
+            # time.sleep(0.01)
+        elif(data.axes[6]==1):
             self.current_mode = "left"
-            time.sleep(0.1)
-        elif(data.axes[6]==-1 and self.current_mode != "right"):
+            # time.sleep(0.01)
+        elif(data.axes[6]==-1):
             self.current_mode = "right"
-            time.sleep(0.01)
+            # time.sleep(0.01)
         
         else:
             self.current_mode = " "
