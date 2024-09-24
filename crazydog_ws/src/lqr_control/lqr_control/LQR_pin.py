@@ -8,16 +8,20 @@ import urdf_loader
 
 class InvertedPendulumLQR:
     # def __init__(self, hip, knee, l_bar=3.0, M=0.48, m=2*(0.06801+0.07172)+0.45376, g=9.8, Q=None, R=None, delta_t=1/50, sim_time=15.0, show_animation=True):
-    def __init__(self, urdf=None, pos = None, wheel_r=None, M=None, m=None, g=9.81, Q=None, R=None, delta_t=None, sim_time=15.0, show_animation=True):    
+    def __init__(self, l_bar=None, urdf=None, pos = None, wheel_r=None, M=None, m=None, g=9.81, Q=None, R=None, delta_t=None, sim_time=15.0, show_animation=False):    
     # transform isaac sim angle to com.py angle
-        robot = urdf_loader.loadRobotModel(urdf_path=urdf)
-        robot.pos = pos
-        self.com, self.l_bar = robot.calculateCom(plot=False)
-        # self.l_bar = 0.20348261632961423
+        if l_bar is None:
+            print('old loading type')
+            robot = urdf_loader.loadRobotModel(urdf_path=urdf)
+            robot.pos = pos
+            self.com, self.l_bar = robot.calculateCom(plot=False)
+            # self.l_bar = 0.20348261632961423
+            self.M = M  # mass of the cart [kg]self.R = R if R is not None else np.diag([0.1])  # input cost matrix
+            self.m = robot.calculateMass()  # mass of the pendulum [kg]
+        else:
+            self.m = m
+            self.l_bar = l_bar
         print('lenth:', self.l_bar)
-        self.M = M  # mass of the cart [kg]self.R = R if R is not None else np.diag([0.1])  # input cost matrix
-        self.m = robot.calculateMass()  # mass of the pendulum [kg]
-        # self.m = 8.305
         print('cart mass:', self.m)
         self.g = g  # gravity [m/s^2]
         self.nx = 4  # number of states

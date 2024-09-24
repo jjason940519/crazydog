@@ -6,19 +6,40 @@ from numpy.linalg import inv, eig
 import pinocchio as pin
 import urdf_loader
 
+
 class InvertedPendulumLQR:
     # def __init__(self, hip, knee, l_bar=3.0, M=0.48, m=2*(0.06801+0.07172)+0.45376, g=9.8, Q=None, R=None, delta_t=1/50, sim_time=15.0, show_animation=True):
-    def __init__(self, urdf=None, pos = None, wheel_r=None, M=None, m=None, g=9.81, Q=None, R=None, delta_t=None, sim_time=15.0, show_animation=True):    
+    def __init__(self, 
+                 l_bar=None, 
+                 urdf=None, 
+                 pos = None, 
+                 wheel_r=None, 
+                 M=None, 
+                 m=None, 
+                 g=9.81, 
+                 Q=None, 
+                 R=None, 
+                 delta_t=None, 
+                 sim_time=15.0, 
+                 show_animation=False, 
+                 dynamic_K=False, 
+                 max_l=None, 
+                 min_l=None,
+                 slice_w=None):    
     # transform isaac sim angle to com.py angle
-        robot = urdf_loader.loadRobotModel(urdf_path=urdf)
-        robot.pos = pos
-        self.com, self.l_bar = robot.calculateCom(plot=False)
-        # self.l_bar = 0.20348261632961423
+        if l_bar is None:
+            print('old loading type')
+            robot = urdf_loader.loadRobotModel(urdf_path=urdf)
+            robot.pos = pos
+            self.com, self.l_bar = robot.calculateCom(plot=False)
+            # self.l_bar = 0.20348261632961423
+            self.m = robot.calculateMass()  # mass of the pendulum [kg]
+        else:
+            self.m = m
+            self.l_bar = l_bar
         print('lenth:', self.l_bar)
-        self.M = M  # mass of the cart [kg]self.R = R if R is not None else np.diag([0.1])  # input cost matrix
-        self.m = robot.calculateMass()  # mass of the pendulum [kg]
-        # self.m = 8.305
         print('cart mass:', self.m)
+        self.M = M  # mass of the cart [kg]self.R = R if R is not None else np.diag([0.1])  # input cost matrix
         self.g = g  # gravity [m/s^2]
         self.nx = 4  # number of states
         self.nu = 1  # number of inputs
@@ -26,83 +47,36 @@ class InvertedPendulumLQR:
         self.Q = Q #if Q is not None else np.diag([0, 1.5, 150.0, 100.0])  # state cost matrix , best in IsaacSim
         self.R = R #if R is not None else np.diag([1e-6])  # input cost matrix
 
-        # self.Q = Q if Q is not None else np.diag([0.1, 0.001, 30.0, 0.0])  # state cost matrix
-        # self.R = R if R is not None else np.diag([0.001])  # input cost matrix
-
         self.delta_t = delta_t  # time tick [s]
-        self.sim_time = sim_time  # simulation time [s]
+        
+        if dynamic_K == False:
+            self.A, self.B = self.get_model_matrix()
+            self.K, _, _ = self.dlqr(self.A, self.B, self.Q, self.R)
+            print("Q:", self.Q)
+            print("R:", self.R)
+            print("K:", self.K)
+        else:
+            self.K_list = []
+            self.max_l = max_l
+            self.min_l = min_l
+            self.slice_w = slice_w
+            self.solve_K()
+            self.K = None
+            print(self.K_list)
 
-        self.show_animation = show_animation
+    def solve_K(self):
+        for l in np.arange(self.min_l, self.max_l, self.slice_w):
+            self.l_bar = l
+            A, B = self.get_model_matrix()
+            K, _, _ = self.dlqr(A, B, self.Q, self.R)
+            self.K_list.append(K)
 
-        self.A, self.B = self.get_model_matrix()
-        self.K, _, _ = self.dlqr(self.A, self.B, self.Q, self.R)
-        print("Q:", self.Q)
-        print("R:", self.R)
-        print("K:", self.K)
+    def change_K(self, l):
+        self.l_bar = l
+        index = int((self.l_bar-self.min_l)/self.slice_w)
+        self.K = self.K_list[index]
+        print('K change to:', self.K)
 
-    def main(self):
-        x0 = np.array([
-            [0.0],
-            [0.0],
-            [math.radians(10)],
-            [0.0]
-        ])
-
-        X = np.copy(x0)
-        time_elapsed = 0.0
-
-        time_list = []
-        x_list = []
-        u_list = []
-        theta_list = []
-        while self.sim_time > time_elapsed:
-        # while True:
-            time_elapsed += self.delta_t
-            
-            # calculate control input
-            u = self.lqr_control(X)
-            # print(u,'N')
-            # print(x[0],'\n')
-            # simulate inverted pendulum cart
-            # if u[0,0] > 0.142:
-            #         u[0, 0] = 0.142
-            # elif u[0, 0] < -0.142:
-            #     u[0, 0] = -0.142
-            X = self.simulation(X, u)
-
-            # time_list.append(time_elapsed)
-            time_list.append(time_elapsed)
-            # u_list.append(u[0, 0])
-            x_list.append(X[0, 0])
-            theta_list.append(math.degrees(X[2, 0]))
-            u_list.append(u[0, 0])
-            # x_list.append(X[0, 0])
-            # theta_list.append(math.degrees(X[2, 0]))
-
-
-            # if self.show_animation:
-            #     plt.clf()
-            #     px = float(x[0, 0])
-            #     theta = float(x[2, 0])
-            #     self.plot_cart(px, theta)
-            #     plt.xlim([-5.0, 2.0])
-            #     plt.pause(0.001)
-
-        print("Finish")
-        print(f"x={float(X[0, 0]):.2f} [m] , theta={math.degrees(X[2, 0]):.2f} [deg]")
-        if self.show_animation:
-            plt.subplot(311)
-            plt.plot(time_list, x_list, label = f"Q[theta]={Q[2,2]:.1f}")
-            plt.subplot(312)
-            plt.plot(time_list, theta_list, label = f"Q[theta]={Q[2,2]:.1f}")
-            plt.subplot(313)
-            plt.plot(time_list, u_list, label = f"Q[theta]={Q[2,2]:.1f}")
-
-
-    def simulation(self, x, u):
-        X_dot = self.A @ x + self.B @ u
-
-        return X_dot
 
     def solve_DARE(self, A, B, Q, R, maxiter=150, eps=0.01):
         """
@@ -185,72 +159,3 @@ class InvertedPendulumLQR:
         B = self.delta_t * B
 
         return A, B
-
-    def plot_cart(self, xt, theta):
-        cart_w = 1.0
-        cart_h = 0.5
-        radius = 0.1
-
-        cx = np.array([-cart_w / 2.0, cart_w / 2.0, cart_w /
-                       2.0, -cart_w / 2.0, -cart_w / 2.0])
-        cy = np.array([0.0, 0.0, cart_h, cart_h, 0.0])
-        cy += radius * 2.0
-
-        cx = cx + xt
-
-        bx = np.array([0.0, self.l_bar * math.sin(-theta)])
-        bx += xt
-        by = np.array([cart_h, self.l_bar * math.cos(-theta) + cart_h])
-        by += radius * 2.0
-
-        angles = np.arange(0.0, math.pi * 2.0, math.radians(3.0))
-        ox = np.array([radius * math.cos(a) for a in angles])
-        oy = np.array([radius * math.sin(a) for a in angles])
-
-        rwx = np.copy(ox) + cart_w / 4.0 + xt
-        rwy = np.copy(oy) + radius
-        lwx = np.copy(ox) - cart_w / 4.0 + xt
-        lwy = np.copy(oy) + radius
-
-        wx = np.copy(ox) + bx[-1]
-        wy = np.copy(oy) + by[-1]
-
-        plt.plot(cx.flatten(), cy.flatten(), "-b")
-        plt.plot(bx.flatten(), by.flatten(), "-k")
-        plt.plot(rwx.flatten(), rwy.flatten(), "-k")
-        plt.plot(lwx.flatten(), lwy.flatten(), "-k")
-        plt.plot(wx.flatten(), wy.flatten(), "-k")
-        plt.title(f"x: {xt:.2f} , theta: {math.degrees(theta):.2f}")
-
-        # for stopping simulation with the esc key.
-        plt.gcf().canvas.mpl_connect(
-            'key_release_event',
-            lambda event: [exit(0) if event.key == 'escape' else None])
-
-        plt.axis("equal")
-
-if __name__ == '__main__':
-    
-    # for i in range(1, 11):
-    Q = np.diag([0.0, 1.0, 150.0, 100.0])
-    R = np.diag([1.0]) 
-    lqr = InvertedPendulumLQR(72.42, 125, Q = Q, R=R)
-    lqr.main()
-    plt.suptitle('Q = [0.001, 1.0, theta, 0.001], R=[1.0]')
-    plt.subplot(311)
-    plt.xlabel('time')
-    plt.ylabel('x')
-    plt.legend()
-    plt.grid(True)
-    plt.subplot(312)
-    plt.xlabel('time')
-    plt.ylabel('theta')
-    plt.legend()
-    plt.grid(True)
-    plt.subplot(313)
-    plt.xlabel('time')
-    plt.ylabel('u')
-    plt.legend()
-    plt.grid(True)
-    plt.show()
-    

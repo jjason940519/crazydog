@@ -14,24 +14,24 @@ class loadRobotModel():
 
         # Compute forward kinematics
         pin.forwardKinematics(self.model, self.data, self.pos)
-        print('q', self.pos)
+        # print('q', self.pos)
         # Update frame placements
         pin.updateFramePlacements(self.model, self.data)
 
         com = pin.centerOfMass(self.model, self.data)
-        plt.plot(com[0], com[2], marker = 'x')
+        # plt.plot(com[0], com[2], marker = 'x')
 
-        J = pin.computeJointJacobians(self.model, self.data, self.pos)
+        # J = pin.computeJointJacobians(self.model, self.data, self.pos)
 
         com_lenth_vector = com - self.data.oMi[-1].translation
         com_lenth = (com_lenth_vector[0]**2+com_lenth_vector[2]**2)**(1/2)
 
-        for oMi in self.data.oMi:
-            plt.scatter(oMi.translation[0], oMi.translation[2]) 
+        # for oMi in self.data.oMi:
+        #     plt.scatter(oMi.translation[0], oMi.translation[2]) 
         
-        if plot:
-            plt.axis('equal')
-            plt.show()
+        # if plot:
+        #     plt.axis('equal')
+        #     plt.show()
         
         return com, com_lenth
 
@@ -69,6 +69,11 @@ class loadRobotModel():
             else:
                 body_mass += inertia.mass
         return body_mass
+    
+    def getOmi(self):
+        for name, oMi in zip(self.model.names, self.data.oMi):
+            if name=='wheel4' or name=='wheel04':
+                return oMi.translation[0]
     
 
 if __name__=="__main__":

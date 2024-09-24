@@ -12,12 +12,13 @@ import unitree_motor_command as um
 import pickle
 from datetime import datetime
 import os
+from utils import urdf_loader
 
 WHEEL_RADIUS = 0.08     # m
 WHEEL_MASS = 0.695  # kg
 WHEEL_DISTANCE = 0.355
 URDF_PATH = "/home/crazydog/crazydog/crazydog_ws/src/lqr_control/lqr_control/robot_models/big bipedal robot v1/urdf/big bipedal robot v1.urdf"
-MID_ANGLE = 0.05
+MID_ANGLE = 0.0   #0.05
 TORQUE_CONSTRAIN = 1.5
 MOTOR_INIT_POS = [None, 0.669, 3.815, None, 1.247+2*math.pi, 2.970]     # for unitree motors
 INIT_ANGLE = [-2.42, 2.6]
@@ -30,17 +31,30 @@ class robotController():
         rclpy.init()
         # K: [[ 2.97946709e-07  7.36131891e-05 -1.28508761e+01 -4.14185118e-01]]
         Q = np.diag([0., 10., 100., 0.1])       # 1e-9, 0.1, 1.0, 1e-4
-        R = np.diag(np.diag([2.]))   #0.02
+        R = np.diag(np.diag([2.5]))   #0.02
         q = np.array([0., 0., 0., 0., 0., 0., 1.,
                             0., -1.18, 2.0, 1., 0.,
                             0., -1.18, 2.0, 1., 0.])
+        self.robot = urdf_loader.loadRobotModel(urdf_path=URDF_PATH)
+        self.robot.pos = q
+        self.com, self.l_bar = self.robot.calculateCom(plot=False)
+        mass = self.robot.calculateMass()
         self.lqr_thread = None
         self.lqr_controller = InvertedPendulumLQR(pos=q, 
                                                   urdf=URDF_PATH, 
                                                   wheel_r=WHEEL_RADIUS, 
                                                   M=WHEEL_MASS, Q=Q, R=R, 
-                                                  delta_t=1/300, 
-                                                  show_animation=False)
+                                                  delta_t=1/250, 
+                                                  show_animation=False,
+                                                  m=mass,
+                                                  l_bar=self.l_bar,
+                                                  dynamic_K = True,
+                                                  max_l=0.46,
+                                                  min_l=0.07,
+                                                  slice_w=0.03)
+        self.lqr_controller.change_K(self.l_bar)
+        # l_bar from 0.1 to 0.37
+
 
     def enable_ros_manager(self):
         self.ros_manager = RosTopicManager()
@@ -93,8 +107,34 @@ class robotController():
         else:
             print("inital fail")
 
+    
+    def inverse_kinematics(self, x, y, L1=THIGH_LENGTH, L2=CALF_LENGTH):
+        # 計算 d    
+        d = np.sqrt(x**2 + y**2)
+        # 計算 theta2
+        cos_theta2 = (x**2 + y**2 - L1**2 - L2**2) / (2 * L1 * L2)
+        theta2 = np.arccos(cos_theta2)
+        
+        # 計算 theta1
+        theta1 = np.arctan2(y, x) - np.arctan2(L2 * np.sin(theta2), L1 + L2 * np.cos(theta2))
+    
+        return theta1, theta2
+    
+    def get_angle_error(self, axis):
+        theta1, theta2 = self.inverse_kinematics(axis[0], axis[1])
+        theta2 = max(0, min(theta2, 2.618))
+        self.robot.pos = np.array([0., 0., 0., 0., 0., 0., 1.,
+                                0., theta1+1.57, theta2, 1., 0.,
+                                0., theta1+1.57, theta2, 1., 0.])
+        self.com, self.l_bar = self.robot.calculateCom()
+        theta1_err = theta1 - INIT_ANGLE[0]
+        theta2_err = theta2 - INIT_ANGLE[1]
+        return theta1_err, theta2_err
+
     def locklegs(self):
+        self.ros_manager.wheel_coordinate = [0.033-0.0752, -0.2285]
         theta1_err, theta2_err = self.get_angle_error(self.ros_manager.wheel_coordinate)     # lock legs coordinate [x, y] (hip joint coordinate (0.0742, 0))
+        self.lqr_controller.change_K(self.l_bar)
         while self.ros_manager.motor_states[1].q <= MOTOR_INIT_POS[1]-theta1_err*6.33 and self.ros_manager.motor_states[4].q >= MOTOR_INIT_POS[4]+theta1_err*6.33:            
             # self.set_motor_cmd(motor_number=1, kp=2, kd=0.02, position=self.ros_manager.motor_states[1].q+0.1, torque=0, velocity=0)
             # self.set_motor_cmd(motor_number=4, kp=2, kd=0.02, position=self.ros_manager.motor_states[4].q-0.1, torque=0, velocity=0)
@@ -121,10 +161,11 @@ class robotController():
             time.sleep(0.01)
     
     def standup(self):
-        self.ros_manager.wheel_coordinate = [0.034878-0.0742, -0.104134]
+        self.ros_manager.wheel_coordinate = [0.0348784-0.0752, -0.10413465]
         theta1_err, theta2_err = self.get_angle_error(self.ros_manager.wheel_coordinate)     # lock legs coordinate [x, y] (hip joint coordinate (0.0742, 0))
+        self.lqr_controller.change_K(self.l_bar)
         self.startController()
-        time.sleep(0.275)
+        time.sleep(0.3)
         self.set_motor_cmd(motor_number=1, kp=5, kd=0.12, position=MOTOR_INIT_POS[1]-theta1_err*6.33)
         self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
         time.sleep(0.1)
@@ -136,32 +177,21 @@ class robotController():
         self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
         
 
-    def check_pose(self):
+    def update_pose(self):
         theta1_err, theta2_err = self.get_angle_error(self.ros_manager.wheel_coordinate)
         self.set_motor_cmd(motor_number=1, kp=10, kd=0.12, position=MOTOR_INIT_POS[1]-theta1_err*6.33)
         self.set_motor_cmd(motor_number=4, kp=10, kd=0.12, position=MOTOR_INIT_POS[4]+theta1_err*6.33)
         self.set_motor_cmd(motor_number=2, kp=10, kd=0.12, position=MOTOR_INIT_POS[2]-theta2_err*6.33*1.6)
         self.set_motor_cmd(motor_number=5, kp=10, kd=0.12, position=MOTOR_INIT_POS[5]+theta2_err*6.33*1.6)
+        # print(theta1_err, theta2_err)
         self.ros_manager.motor_cmd_pub.publish(self.cmd_list)
 
-    def inverse_kinematics(self, x, y, L1=THIGH_LENGTH, L2=CALF_LENGTH):
-        # 計算 d    
-        d = np.sqrt(x**2 + y**2)
-        # 計算 theta2
-        cos_theta2 = (x**2 + y**2 - L1**2 - L2**2) / (2 * L1 * L2)
-        theta2 = np.arccos(cos_theta2)
-        
-        # 計算 theta1
-        theta1 = np.arctan2(y, x) - np.arctan2(L2 * np.sin(theta2), L1 + L2 * np.cos(theta2))
-    
-        return theta1, theta2
-    
-    def get_angle_error(self, axis):
-        theta1, theta2 = self.inverse_kinematics(axis[0], axis[1])
-        theta2 = max(0, min(theta2, 2.618))
-        theta1_err = theta1 - INIT_ANGLE[0]
-        theta2_err = theta2 - INIT_ANGLE[1]
-        return theta1_err, theta2_err
+    def calibrate_com(self):
+        oMi = self.robot.getOmi()
+        err = oMi - self.com[0]
+        # print(err)
+        # print(l_bar)
+        self.ros_manager.wheel_coordinate[0] -= err*0.5
 
     def startController(self):
         self.prev_pitch = 0
@@ -217,7 +247,9 @@ class robotController():
             if (time.time()-start_time) < 3:
                 yaw_torque = 0.0
             if (time.time()-start_time) > 3:
-                self.check_pose()
+                self.calibrate_com()
+                self.update_pose()
+                self.lqr_controller.change_K(self.l_bar)
             motor_command_left = U[0, 0] + yaw_torque
             motor_command_right = U[0, 0] - yaw_torque
             # soft constrain

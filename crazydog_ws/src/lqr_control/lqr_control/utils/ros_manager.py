@@ -32,7 +32,7 @@ class RosTopicManager(Node):
         self.joy_linear_vel = 0.
         self.joy_angular_vel = 0.
 
-        self.wheel_coordinate = [0.033-0.0742, -0.2285]  # lock legs coordinate [x, y] (hip joint coordinate (0.0742, 0))
+        self.wheel_coordinate = [0.033-0.0752, -0.2285]  # lock legs coordinate [x, y] (hip joint coordinate (0.0742, 0))
 
         self.ctrl_condition = threading.Condition()
 
