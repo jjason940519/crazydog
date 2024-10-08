@@ -117,7 +117,7 @@ class InvertedPendulumLQR:
         # print(f"calc time:{elapsed_time:.6f} [sec]")
         return u
     
-    def advance_lqr_control(self, x, x_desire,):
+    def advance_lqr_control(self, x, x_desire):
         if self.adv_k != None:
 
             start = time.time()

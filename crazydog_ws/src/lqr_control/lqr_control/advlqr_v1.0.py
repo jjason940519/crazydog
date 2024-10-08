@@ -35,7 +35,8 @@ class robotController():
         q = np.array([0., 0., 0., 0., 0., 0., 1.,
                             0., -1.18, 2.0, 1., 0.,
                             0., -1.18, 2.0, 1., 0.])
-        adva_k = np.array()
+        adva_k = np.array([-10.4123 ,-1.5540 ,-1.4474 ,-1.8524 ,3.1789 ,0.5866],
+                          [5.4507  ,0.0756  ,0.4620  ,0.4474 ,17.6120  ,1.1256])
         self.robot = urdf_loader.loadRobotModel(urdf_path=URDF_PATH)
         self.robot.pos = q
         self.com, self.l_bar = self.robot.calculateCom(plot=False)
@@ -234,13 +235,21 @@ class robotController():
             X[2, 0] = X_last[2, 0] + X[3, 0] * dt 
             X[2, 1] = X_last[2, 1] + X[3, 1] * dt 
 
-            X[0, 0], X[1, 0] = self.ros_manager.get_orientation()
-            X[0, 1], X[1, 1] = X[0, 0], X[1, 0]
+            X[4, 0], X[5, 0] = self.ros_manager.get_orientation()
+            X[4, 1], X[5, 1] = X[0, 0], X[1, 0]
 
-            X[4, 0] = self.ros_manager.motor_states[4].q
-            X[4, 1] = self.ros_manager.motor_states[1].q
-            X[5, 0] = self.ros_manager.motor_states[4].dq
-            X[5, 1] = self.ros_manager.motor_states[1].dq
+            X[0, 0] = (self.ros_manager.motor_states[4].q+7.36)/6.33
+            X[0, 1] = (self.ros_manager.motor_states[1].q-7.36)/6.33
+            X[1, 0] = self.ros_manager.motor_states[4].dq
+            X[1, 1] = self.ros_manager.motor_states[1].dq
+            
+            if abs(X[0, 0]) > math.radians(20) or abs(X[4, 0]) > math.radians(15) or abs(X[4, 1]):     # constrain
+                # U[0, 0] = 0.0
+                self.set_motor_cmd(motor_number=4,torque=0)
+                self.set_motor_cmd(motor_number=5,torque=0)
+                self.ros_manager.send_foc_command(0.0, 0.0)
+                self.ros_manager.motor_cmd_pub(self.cmd_list)
+                continue
 
             U = np.copy(self.lqr_controller.advance_lqr_control(X,X_ref))
 
@@ -358,6 +367,7 @@ def main(args=None):
     robot = robotController()
     command_dict = {
         "start": robot.startController,
+        "startadv": robot.startadvaController,
         "d": robot.disableController,
         "r": robot.releaseUnitree,
         "i": robot.init_unitree_motor,
